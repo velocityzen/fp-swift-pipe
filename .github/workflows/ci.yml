@@ -13,16 +13,13 @@ concurrency:
 jobs:
   lint:
     name: Lint
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode (provides swift-format)
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
-
-      - name: Install SwiftLint
-        run: brew install swiftlint
+      - name: Install swift-format and SwiftLint
+        run: brew install swift-format swiftlint
 
       - name: Show tool versions
         run: |
@@ -37,14 +34,10 @@ jobs:
 
   macos:
     name: Test macOS
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Select Xcode
-        # macos-15 ships with multiple Xcodes; pick the latest available so we get Swift 6.3+.
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
 
       - name: Show Swift version
         run: swift --version
