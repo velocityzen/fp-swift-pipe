@@ -7,7 +7,7 @@ import FP
 /// the closure runs strictly sequentially. With `concurrency > 1` up to N closures run
 /// in flight at once and **results emit as they complete (unordered)** — for source-
 /// order-preserving parallelism use `AsyncMapKeepOrder`.
-struct AsyncMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStage {
+struct AsyncMapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
     private let transform: @Sendable (Input) async -> Output
     private let concurrency: Int
 
@@ -16,7 +16,7 @@ struct AsyncMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStage {
         self.concurrency = max(1, concurrency)
     }
 
-    func attach<F: Error & Sendable>(_ upstream: Pipeline<Input, F>) -> Pipeline<Output, F> {
+    func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
         let transform = self.transform
         let concurrency = self.concurrency
         return .erased {
@@ -39,6 +39,6 @@ struct AsyncMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStage {
 public func AsyncMap<Input: Sendable, Output: Sendable>(
     concurrency: Int = 1,
     _ transform: @escaping @Sendable (Input) async -> Output,
-) -> some PipelinePolyStage<Input, Output> {
+) -> some PipePolyStage<Input, Output> {
     AsyncMapStage(transform, concurrency: concurrency)
 }

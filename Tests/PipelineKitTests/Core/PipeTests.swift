@@ -9,7 +9,7 @@ private enum E: Error, Equatable { case bad }
 /// A pipeline value can be iterated multiple times; each iteration is independent.
 @Test
 func pipelineIsReiterable() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) in n * 10 }
     }
@@ -24,11 +24,11 @@ func pipelineIsReiterable() async {
 /// Identity: `p |> Map { $0 } == p`.
 @Test
 func functorIdentity() async {
-    let withId = Pipeline<Int, Never> {
+    let withId = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) in n }
     }
-    let plain = Pipeline<Int, Never> { From([1, 2, 3]) }
+    let plain = Pipe<Int, Never> { From([1, 2, 3]) }
 
     let a = await withId.toResult()
     let b = await plain.toResult()
@@ -41,12 +41,12 @@ func functorComposition() async {
     let f: @Sendable (Int) -> Int = { $0 * 2 }
     let g: @Sendable (Int) -> Int = { $0 + 1 }
 
-    let split = Pipeline<Int, Never> {
+    let split = Pipe<Int, Never> {
         From([1, 2, 3])
         Map(f)
         Map(g)
     }
-    let fused = Pipeline<Int, Never> {
+    let fused = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) in g(f(n)) }
     }
@@ -61,12 +61,12 @@ func functorComposition() async {
 /// Failure identity: `p |> MapError { $0 } == p`.
 @Test
 func bifunctorIdentityOverFailure() async {
-    let withId = Pipeline<Int, E> {
+    let withId = Pipe<Int, E> {
         From([1, -1, 2])
         FlatMap { (n: Int) -> Result<Int, E> in n < 0 ? .failure(.bad) : .success(n) }
         MapError { (e: E) in e }
     }
-    let plain = Pipeline<Int, E> {
+    let plain = Pipe<Int, E> {
         From([1, -1, 2])
         FlatMap { (n: Int) -> Result<Int, E> in n < 0 ? .failure(.bad) : .success(n) }
     }
@@ -88,7 +88,7 @@ func bifunctorIdentityOverFailure() async {
 @Test
 func failuresShortCircuitSuccessSideClosures() async {
     let mapHits = Mutex<Int>(0)
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, E> in
             n == 2 ? .failure(.bad) : .success(n)
@@ -114,13 +114,13 @@ func failuresShortCircuitSuccessSideClosures() async {
 /// `(source → a → b) → c` produces the same elements as `source → a → (b → c)`.
 @Test
 func compositionIsAssociative() async {
-    let left = Pipeline<Int, Never> {
+    let left = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) in n + 1 }
         Map { (n: Int) in n * 2 }
         Map { (n: Int) in n - 3 }
     }
-    let right = Pipeline<Int, Never> {
+    let right = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) in (n + 1) * 2 }
         Map { (n: Int) in n - 3 }

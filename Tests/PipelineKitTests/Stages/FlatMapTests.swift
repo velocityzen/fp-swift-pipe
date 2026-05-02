@@ -5,7 +5,7 @@ private enum TestError: Error, Equatable { case negative }
 
 @Test
 func flatMapShortCircuitsOnFailure() async {
-    let pipe = Pipeline<Int, TestError> {
+    let pipe = Pipe<Int, TestError> {
         From([1, -1, 2])
         FlatMap { (n: Int) -> Result<Int, TestError> in
             n < 0 ? .failure(.negative) : .success(n * 2)

@@ -3,7 +3,7 @@ import Testing
 
 @Test
 func compactMapDropsNils() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(["1", "two", "3", "four", "5"])
         CompactMap { Int($0) }
     }

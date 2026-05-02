@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable, Sendable { case bad }
 
 @Test
 func asyncMatchFoldsAsynchronously() async {
-    let pipe = Pipeline<String, Never> {
+    let pipe = Pipe<String, Never> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 2 ? .failure(.bad) : .success(n)

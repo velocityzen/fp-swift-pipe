@@ -6,7 +6,7 @@ import FP
 /// `concurrency` controls how many folds run in parallel. Default 1 is strictly
 /// sequential. With `concurrency > 1` results emit as they complete (unordered).
 struct AsyncMatchStage<Input: Sendable, Output: Sendable, InputFailure: Error & Sendable>:
-    PipelineFoldStage
+    PipeFoldStage
 {
     private let onSuccess: @Sendable (Input) async -> Output
     private let onFailure: @Sendable (InputFailure) async -> Output
@@ -22,7 +22,7 @@ struct AsyncMatchStage<Input: Sendable, Output: Sendable, InputFailure: Error & 
         self.concurrency = max(1, concurrency)
     }
 
-    func attach(_ upstream: Pipeline<Input, InputFailure>) -> Pipeline<Output, Never> {
+    func attach(_ upstream: Pipe<Input, InputFailure>) -> Pipe<Output, Never> {
         let onSuccess = self.onSuccess
         let onFailure = self.onFailure
         let concurrency = self.concurrency
@@ -51,6 +51,6 @@ public func AsyncMatch<Input: Sendable, Output: Sendable, InputFailure: Error & 
     concurrency: Int = 1,
     onSuccess: @escaping @Sendable (Input) async -> Output,
     onFailure: @escaping @Sendable (InputFailure) async -> Output,
-) -> some PipelineFoldStage<Input, Output, InputFailure> {
+) -> some PipeFoldStage<Input, Output, InputFailure> {
     AsyncMatchStage(onSuccess: onSuccess, onFailure: onFailure, concurrency: concurrency)
 }

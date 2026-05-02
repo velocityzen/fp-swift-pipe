@@ -6,7 +6,7 @@ private enum E: Error, Equatable, Sendable { case bad }
 
 @Test
 func fromAsyncWithSyncSequence() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         FromAsync { () async -> [Int] in
             try? await Task.sleep(nanoseconds: 1_000)
             return [1, 2, 3]
@@ -18,7 +18,7 @@ func fromAsyncWithSyncSequence() async {
 
 @Test
 func fromAsyncWithAsyncSequence() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         FromAsync { () async -> AsyncStream<Int> in
             try? await Task.sleep(nanoseconds: 1_000)
             return AsyncStream<Int> { continuation in
@@ -35,7 +35,7 @@ func fromAsyncWithAsyncSequence() async {
 
 @Test
 func fromAsyncResultLiftsResultBearingSequence() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         FromAsyncResult { () async -> AsyncStream<Result<Int, E>> in
             AsyncStream<Result<Int, E>> { continuation in
                 continuation.yield(.success(10))
@@ -53,7 +53,7 @@ func fromAsyncResultLiftsResultBearingSequence() async {
 @Test
 func fromAsyncIsReiterableAndAwaitsClosureFresh() async {
     let counter = Mutex<Int>(0)
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         FromAsync { () async -> [Int] in
             counter.withLock { $0 += 1 }
             return [1, 2, 3]

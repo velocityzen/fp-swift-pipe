@@ -6,7 +6,7 @@ private enum AppError: Error, Equatable { case bad }
 
 @Test
 func asyncFilterKeepsMatchingSuccessesAndPassesFailures() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3, 4, 5])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 3 ? .failure(.bad) : .success(n)
@@ -28,7 +28,7 @@ func asyncFilterKeepsMatchingSuccessesAndPassesFailures() async {
 @Test
 func asyncFilterConcurrentRetainsExpectedElements() async {
     // With concurrency > 1, order is not guaranteed, but the set of survivors must match.
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(0..<20)
         AsyncFilter(concurrency: 8) { (n: Int) async in n.isMultiple(of: 3) }
     }
@@ -43,7 +43,7 @@ func asyncFilterConcurrentParallelizesWork() async {
     // 10 elements × 20ms predicate. Sequential bound: 200ms. Concurrent: ~20ms.
     let count = 10
     let perElementMs: UInt64 = 20
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(0..<count)
         AsyncFilter(concurrency: count) { (_: Int) async in
             try? await Task.sleep(nanoseconds: perElementMs * 1_000_000)

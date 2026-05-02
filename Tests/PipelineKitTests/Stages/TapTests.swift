@@ -5,7 +5,7 @@ import Testing
 @Test
 func tapObservesEverySuccess() async {
     let counter = Mutex<Int>(0)
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([10, 20, 30])
         Tap { (n: Int) in counter.withLock { $0 += n } }
     }

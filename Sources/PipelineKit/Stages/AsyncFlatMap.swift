@@ -7,7 +7,7 @@ import FP
 /// sequential. With `concurrency > 1` up to N closures run in flight and results emit
 /// as they complete (unordered).
 struct AsyncFlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sendable>:
-    PipelineStage
+    PipeStage
 {
     private let transform: @Sendable (Input) async -> Result<Output, Failure>
     private let concurrency: Int
@@ -20,7 +20,7 @@ struct AsyncFlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sen
         self.concurrency = max(1, concurrency)
     }
 
-    func attach(_ upstream: Pipeline<Input, Failure>) -> Pipeline<Output, Failure> {
+    func attach(_ upstream: Pipe<Input, Failure>) -> Pipe<Output, Failure> {
         let transform = self.transform
         let concurrency = self.concurrency
         return .erased {
@@ -43,6 +43,6 @@ struct AsyncFlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sen
 public func AsyncFlatMap<Input: Sendable, Output: Sendable, Failure: Error & Sendable>(
     concurrency: Int = 1,
     _ transform: @escaping @Sendable (Input) async -> Result<Output, Failure>,
-) -> some PipelineStage<Input, Output, Failure> {
+) -> some PipeStage<Input, Output, Failure> {
     AsyncFlatMapStage(transform, concurrency: concurrency)
 }

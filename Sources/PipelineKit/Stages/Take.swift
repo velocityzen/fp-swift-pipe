@@ -3,7 +3,7 @@
 /// Counts every element regardless of `Result` kind — matches stdlib `AsyncSequence.prefix(_:)`.
 /// To take the first N successes, compose `Filter { … } → Take(N)`; failures still consume
 /// the budget when intermixed.
-struct TakeStage: PipelineForwardingStage {
+struct TakeStage: PipeForwardingStage {
     private let count: Int
 
     init(_ count: Int) {
@@ -11,13 +11,13 @@ struct TakeStage: PipelineForwardingStage {
         self.count = count
     }
 
-    func attach<V: Sendable, F: Error & Sendable>(_ upstream: Pipeline<V, F>) -> Pipeline<V, F> {
+    func attach<V: Sendable, F: Error & Sendable>(_ upstream: Pipe<V, F>) -> Pipe<V, F> {
         let count = self.count
         return .erased { AnyAsyncSequence(upstream.upstream().prefix(count)) }
     }
 }
 
 /// DSL: `Take(10)`.
-public func Take(_ count: Int) -> some PipelineForwardingStage {
+public func Take(_ count: Int) -> some PipeForwardingStage {
     TakeStage(count)
 }

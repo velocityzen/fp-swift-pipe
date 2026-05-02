@@ -5,7 +5,7 @@ import FP
 /// `concurrency` caps the number of in-flight transforms. With the default of 1 this is
 /// strictly sequential. With `concurrency > 1` up to N closures run in parallel and results
 /// emit in the original source order — slow elements hold back faster downstream ones.
-struct AsyncMapKeepOrderStage<Input: Sendable, Output: Sendable>: PipelinePolyStage {
+struct AsyncMapKeepOrderStage<Input: Sendable, Output: Sendable>: PipePolyStage {
     private let transform: @Sendable (Input) async -> Output
     private let concurrency: Int
 
@@ -14,7 +14,7 @@ struct AsyncMapKeepOrderStage<Input: Sendable, Output: Sendable>: PipelinePolySt
         self.concurrency = max(1, concurrency)
     }
 
-    func attach<F: Error & Sendable>(_ upstream: Pipeline<Input, F>) -> Pipeline<Output, F> {
+    func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
         let transform = self.transform
         let concurrency = self.concurrency
         return .erased {
@@ -37,6 +37,6 @@ struct AsyncMapKeepOrderStage<Input: Sendable, Output: Sendable>: PipelinePolySt
 public func AsyncMapKeepOrder<Input: Sendable, Output: Sendable>(
     concurrency: Int = 1,
     _ transform: @escaping @Sendable (Input) async -> Output,
-) -> some PipelinePolyStage<Input, Output> {
+) -> some PipePolyStage<Input, Output> {
     AsyncMapKeepOrderStage(transform, concurrency: concurrency)
 }

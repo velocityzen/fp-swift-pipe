@@ -4,7 +4,7 @@ import Testing
 
 @Test
 func asyncCompactMapDropsNils() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(["1", "two", "3", "four", "5"])
         AsyncCompactMap { (s: String) async -> Int? in
             try? await Task.sleep(nanoseconds: 1_000)
@@ -17,7 +17,7 @@ func asyncCompactMapDropsNils() async {
 
 @Test
 func asyncCompactMapConcurrentRetainsParsedValues() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(["1", "two", "3", "four", "5"])
         AsyncCompactMap(concurrency: 5) { Int($0) }
     }
@@ -31,7 +31,7 @@ func asyncCompactMapConcurrentParallelizesWork() async {
     // 10 elements × 20ms each. Sequential bound: 200ms. Concurrent: ~20ms.
     let count = 10
     let perElementMs: UInt64 = 20
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(0..<count)
         AsyncCompactMap(concurrency: count) { (n: Int) async -> Int? in
             try? await Task.sleep(nanoseconds: perElementMs * 1_000_000)

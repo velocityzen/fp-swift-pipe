@@ -7,7 +7,7 @@ private enum AppError: Error, Equatable { case empty }
 @Test
 func tapErrorObservesEveryFailure() async {
     let observed = Mutex<[AppError]>([])
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, -1, 2, -2])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n < 0 ? .failure(.empty) : .success(n)

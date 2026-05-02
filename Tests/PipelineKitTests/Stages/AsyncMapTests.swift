@@ -5,7 +5,7 @@ import Testing
 @Test
 func asyncMapTransformsSequentially() async {
     // Default concurrency: 1 → sequential, order preserved.
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         AsyncMap { (n: Int) async -> Int in
             try? await Task.sleep(nanoseconds: 1_000)
@@ -22,7 +22,7 @@ func asyncMapConcurrentEmitsUnordered() async {
     // Smaller numbers finish faster. With concurrency > 1, AsyncMap emits as ready;
     // the result set is the same but the order matches completion, not source.
     let count = 5
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([5, 3, 1, 4, 2])
         AsyncMap(concurrency: count) { (n: Int) async -> Int in
             try? await Task.sleep(nanoseconds: UInt64(n) * 5_000_000)
@@ -45,7 +45,7 @@ func asyncMapConcurrentParallelizesWork() async {
     let count = 10
     let perElementMs: UInt64 = 20
 
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(0..<count)
         AsyncMap(concurrency: count) { (n: Int) async -> Int in
             try? await Task.sleep(nanoseconds: perElementMs * 1_000_000)

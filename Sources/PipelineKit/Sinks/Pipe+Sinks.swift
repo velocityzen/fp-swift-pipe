@@ -1,4 +1,4 @@
-public extension Pipeline {
+public extension Pipe {
     /// Collect every success into an array, all-or-nothing.
     /// On the first `.failure`, iteration stops and that failure is returned.
     /// `@discardableResult` so this also serves as a "drive to completion" terminal

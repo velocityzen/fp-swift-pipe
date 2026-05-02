@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable, Sendable { case bad }
 
 @Test
 func asyncAltRecoversAsynchronously() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 2 ? .failure(.bad) : .success(n)

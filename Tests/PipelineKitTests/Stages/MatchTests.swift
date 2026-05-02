@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable, Sendable { case bad }
 
 @Test
 func matchFoldsBothChannelsIntoOneType() async {
-    let pipe = Pipeline<String, Never> {
+    let pipe = Pipe<String, Never> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 2 ? .failure(.bad) : .success(n)
@@ -20,9 +20,9 @@ func matchFoldsBothChannelsIntoOneType() async {
 }
 
 @Test
-func matchOutputPipelineCannotFail() async {
+func matchOutputPipeCannotFail() async {
     // After Match, Failure is Never — pipeline always succeeds at the type level.
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 2 ? .failure(.bad) : .success(n)

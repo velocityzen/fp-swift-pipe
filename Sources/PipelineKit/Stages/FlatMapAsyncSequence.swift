@@ -7,7 +7,7 @@ import FP
 /// The inner sequence must be non-throwing (`Inner.Failure == Never`) — to introduce
 /// errors, use a `Result`-returning stage upstream or downstream.
 struct FlatMapAsyncSequenceStage<Input: Sendable, Inner: AsyncSequence & Sendable>:
-    PipelinePolyStage
+    PipePolyStage
 where Inner.Element: Sendable, Inner.Failure == Never {
     typealias Output = Inner.Element
 
@@ -17,7 +17,7 @@ where Inner.Element: Sendable, Inner.Failure == Never {
         self.transform = transform
     }
 
-    func attach<F: Error & Sendable>(_ upstream: Pipeline<Input, F>) -> Pipeline<Output, F> {
+    func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
         let transform = self.transform
         return .erased {
             let source = upstream.upstream()
@@ -47,7 +47,7 @@ where Inner.Element: Sendable, Inner.Failure == Never {
 /// DSL: `FlatMapAsyncSequence { (url: URL) in fetchPages(for: url) }`.
 public func FlatMapAsyncSequence<Input: Sendable, Inner: AsyncSequence & Sendable>(
     _ transform: @escaping @Sendable (Input) -> Inner,
-) -> some PipelinePolyStage<Input, Inner.Element>
+) -> some PipePolyStage<Input, Inner.Element>
 where Inner.Element: Sendable, Inner.Failure == Never {
     FlatMapAsyncSequenceStage(transform)
 }

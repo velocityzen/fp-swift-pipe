@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable { case empty }
 
 @Test
 func asyncFlatMapShortCircuits() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([2, 4, 5, 6])
         AsyncFlatMap { (n: Int) async -> Result<Int, AppError> in
             n.isMultiple(of: 2) ? .success(n * 10) : .failure(.empty)
@@ -18,7 +18,7 @@ func asyncFlatMapShortCircuits() async {
 
 @Test
 func asyncFlatMapConcurrentEmitsUnordered() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([5, 3, 1, 4, 2])
         AsyncFlatMap(concurrency: 5) { (n: Int) async -> Result<Int, AppError> in
             try? await Task.sleep(nanoseconds: UInt64(n) * 5_000_000)
@@ -37,7 +37,7 @@ func asyncFlatMapConcurrentParallelizesWork() async {
     // 10 elements × 20ms each. Sequential bound: 200ms. Concurrent: ~20ms.
     let count = 10
     let perElementMs: UInt64 = 20
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From(0..<count)
         AsyncFlatMap(concurrency: count) { (n: Int) async -> Result<Int, AppError> in
             try? await Task.sleep(nanoseconds: perElementMs * 1_000_000)

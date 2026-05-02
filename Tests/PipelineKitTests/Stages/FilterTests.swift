@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable { case bad }
 
 @Test
 func filterKeepsMatchingSuccessesAndPassesFailures() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3, 4, 5])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 3 ? .failure(.bad) : .success(n)

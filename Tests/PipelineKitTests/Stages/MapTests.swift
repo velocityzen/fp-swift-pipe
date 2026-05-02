@@ -3,7 +3,7 @@ import Testing
 
 @Test
 func mapAppliesTransformToEverySuccess() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) in n * 100 }
     }

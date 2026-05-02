@@ -12,7 +12,7 @@ private enum E: Error, Equatable, Sendable { case bad }
 
 @Test func benchmarkLongChainOver10kElements() async {
     let count = 10_000
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(0..<count)
         Map { (n: Int) in n + 1 }
         Map { (n: Int) in n * 2 }
@@ -40,7 +40,7 @@ private enum E: Error, Equatable, Sendable { case bad }
     // 100K-element source that fails on the first element. Downstream Map closure
     // must not run for the remaining 99,999 — proves short-circuit works at scale.
     let mapHits = Mutex<Int>(0)
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From(0..<100_000)
         FlatMap { (n: Int) -> Result<Int, E> in
             n == 0 ? .failure(.bad) : .success(n)
@@ -68,7 +68,7 @@ private enum E: Error, Equatable, Sendable { case bad }
     let count = 20
     let perElementSleepNs: UInt64 = 10_000_000  // 10ms
 
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(0..<count)
         AsyncMapKeepOrder(concurrency: count) { (n: Int) async -> Int in
             try? await Task.sleep(nanoseconds: perElementSleepNs)
@@ -97,7 +97,7 @@ private enum E: Error, Equatable, Sendable { case bad }
 }
 
 @Test func benchmarkReiterationCostIsStable() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From(0..<1_000)
         Map { (n: Int) in n + 1 }
         Filter { (n: Int) in n.isMultiple(of: 2) }

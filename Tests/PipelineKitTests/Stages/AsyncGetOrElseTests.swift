@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable, Sendable { case bad }
 
 @Test
 func asyncGetOrElseReplacesFailuresAsynchronously() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([10, 20, 30])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 20 ? .failure(.bad) : .success(n)

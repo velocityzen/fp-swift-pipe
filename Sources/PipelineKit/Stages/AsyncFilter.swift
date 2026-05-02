@@ -3,7 +3,7 @@
 /// `concurrency` controls how many predicate evaluations run in parallel. Default 1 is
 /// strictly sequential. With `concurrency > 1` up to N predicates run in flight and
 /// results emit as they resolve (unordered).
-struct AsyncFilterStage<Value: Sendable>: PipelinePolyStage {
+struct AsyncFilterStage<Value: Sendable>: PipePolyStage {
     typealias Input = Value
     typealias Output = Value
 
@@ -15,7 +15,7 @@ struct AsyncFilterStage<Value: Sendable>: PipelinePolyStage {
         self.concurrency = max(1, concurrency)
     }
 
-    func attach<F: Error & Sendable>(_ upstream: Pipeline<Value, F>) -> Pipeline<Value, F> {
+    func attach<F: Error & Sendable>(_ upstream: Pipe<Value, F>) -> Pipe<Value, F> {
         let predicate = self.predicate
         let concurrency = self.concurrency
         return .erased {
@@ -48,6 +48,6 @@ struct AsyncFilterStage<Value: Sendable>: PipelinePolyStage {
 public func AsyncFilter<Value: Sendable>(
     concurrency: Int = 1,
     _ predicate: @escaping @Sendable (Value) async -> Bool,
-) -> some PipelinePolyStage<Value, Value> {
+) -> some PipePolyStage<Value, Value> {
     AsyncFilterStage(predicate, concurrency: concurrency)
 }

@@ -1,12 +1,12 @@
 /// Maps the success channel; produced `nil`s are dropped. Failures pass through.
-struct CompactMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStage {
+struct CompactMapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
     private let transform: @Sendable (Input) -> Output?
 
     init(_ transform: @escaping @Sendable (Input) -> Output?) {
         self.transform = transform
     }
 
-    func attach<F: Error & Sendable>(_ upstream: Pipeline<Input, F>) -> Pipeline<Output, F> {
+    func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
         let transform = self.transform
         return .erased {
             AnyAsyncSequence(
@@ -27,6 +27,6 @@ struct CompactMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStage {
 /// DSL: `CompactMap { Int($0) }`.
 public func CompactMap<Input: Sendable, Output: Sendable>(
     _ transform: @escaping @Sendable (Input) -> Output?,
-) -> some PipelinePolyStage<Input, Output> {
+) -> some PipePolyStage<Input, Output> {
     CompactMapStage(transform)
 }

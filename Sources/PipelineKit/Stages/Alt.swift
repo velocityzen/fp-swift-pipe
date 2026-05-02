@@ -3,7 +3,7 @@ import FP
 /// Replace each `.failure` with an alternative `Result` that doesn't see the error.
 /// The leftmost success wins; if both are failures, the alternative's failure is
 /// propagated. Mirrors fp-swift's `Result.alt`.
-struct AltStage<Value: Sendable, F: Error & Sendable>: PipelineFlatErrorStage {
+struct AltStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
     typealias InputFailure = F
     typealias OutputFailure = F
 
@@ -13,7 +13,7 @@ struct AltStage<Value: Sendable, F: Error & Sendable>: PipelineFlatErrorStage {
         self.alternative = alternative
     }
 
-    func attach(_ upstream: Pipeline<Value, F>) -> Pipeline<Value, F> {
+    func attach(_ upstream: Pipe<Value, F>) -> Pipe<Value, F> {
         let alternative = self.alternative
         return .erased {
             AnyAsyncSequence(
@@ -28,6 +28,6 @@ struct AltStage<Value: Sendable, F: Error & Sendable>: PipelineFlatErrorStage {
 /// DSL: `Alt { Result<Item, AppError>.success(.placeholder) }`.
 public func Alt<Value: Sendable, F: Error & Sendable>(
     _ alternative: @escaping @Sendable () -> Result<Value, F>,
-) -> some PipelineFlatErrorStage<Value, F, F> {
+) -> some PipeFlatErrorStage<Value, F, F> {
     AltStage(alternative)
 }

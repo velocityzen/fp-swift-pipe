@@ -6,7 +6,7 @@ import FP
 ///
 /// `concurrency` controls how many fallbacks run in parallel. Default 1 is strictly
 /// sequential. With `concurrency > 1` results emit as they complete (unordered).
-struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipelineFlatErrorStage {
+struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
     typealias InputFailure = F
     typealias OutputFailure = Never
 
@@ -18,7 +18,7 @@ struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipelineFlatEr
         self.concurrency = max(1, concurrency)
     }
 
-    func attach(_ upstream: Pipeline<Value, F>) -> Pipeline<Value, Never> {
+    func attach(_ upstream: Pipe<Value, F>) -> Pipe<Value, Never> {
         let onFailure = self.onFailure
         let concurrency = self.concurrency
         return .erased {
@@ -44,6 +44,6 @@ struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipelineFlatEr
 public func AsyncGetOrElse<Value: Sendable, F: Error & Sendable>(
     concurrency: Int = 1,
     _ onFailure: @escaping @Sendable (F) async -> Value,
-) -> some PipelineFlatErrorStage<Value, F, Never> {
+) -> some PipeFlatErrorStage<Value, F, Never> {
     AsyncGetOrElseStage(onFailure, concurrency: concurrency)
 }

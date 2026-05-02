@@ -1,7 +1,7 @@
 /// A type-erased `AsyncSequence` whose iteration is built lazily on demand.
 ///
 /// Each call to `makeAsyncIterator()` invokes the stored builder, so the
-/// underlying chain is reconstructed per iteration. This keeps `Pipeline`
+/// underlying chain is reconstructed per iteration. This keeps `Pipe`
 /// values re-iterable and free of shared mutable state.
 public struct AnyAsyncSequence<Element: Sendable>: AsyncSequence, Sendable {
     public typealias AsyncIterator = Iterator

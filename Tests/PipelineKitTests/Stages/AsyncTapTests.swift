@@ -5,7 +5,7 @@ import Testing
 @Test
 func asyncTapObservesEverySuccess() async {
     let counter = Mutex<Int>(0)
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         AsyncTap { (n: Int) async in
             try? await Task.sleep(nanoseconds: 1_000)

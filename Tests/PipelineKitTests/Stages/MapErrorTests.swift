@@ -12,7 +12,7 @@ private enum NetError: Error, Equatable {
 
 @Test
 func mapErrorWidensFailureType() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, NetError> in
             n == 2 ? .failure(.timeout) : .success(n)
@@ -26,7 +26,7 @@ func mapErrorWidensFailureType() async {
 
 @Test
 func mapErrorOnSuccessPathPassesThrough() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, NetError> in .success(n + 100) }
         MapError { (_: NetError) in AppError.empty }

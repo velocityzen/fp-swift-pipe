@@ -1,5 +1,5 @@
 /// Drops the first `count` elements of the pipeline (successes and failures alike).
-struct DropStage: PipelineForwardingStage {
+struct DropStage: PipeForwardingStage {
     private let count: Int
 
     init(_ count: Int) {
@@ -7,13 +7,13 @@ struct DropStage: PipelineForwardingStage {
         self.count = count
     }
 
-    func attach<V: Sendable, F: Error & Sendable>(_ upstream: Pipeline<V, F>) -> Pipeline<V, F> {
+    func attach<V: Sendable, F: Error & Sendable>(_ upstream: Pipe<V, F>) -> Pipe<V, F> {
         let count = self.count
         return .erased { AnyAsyncSequence(upstream.upstream().dropFirst(count)) }
     }
 }
 
 /// DSL: `Drop(2)`.
-public func Drop(_ count: Int) -> some PipelineForwardingStage {
+public func Drop(_ count: Int) -> some PipeForwardingStage {
     DropStage(count)
 }

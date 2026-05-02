@@ -9,7 +9,7 @@ private enum E: Error, Equatable { case bad }
 @Test
 func toResultIsDiscardableForFireAndForgetUse() async {
     let counter = Mutex<Int>(0)
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) -> Int in
             counter.withLock { $0 += 1 }
@@ -22,7 +22,7 @@ func toResultIsDiscardableForFireAndForgetUse() async {
 
 @Test
 func toResultOnEmptySourceYieldsEmptyArray() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([Int]())
         Map { (n: Int) in n }
     }
@@ -32,7 +32,7 @@ func toResultOnEmptySourceYieldsEmptyArray() async {
 
 @Test
 func toResultShortCircuitsAtFirstFailure() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, E> in
             n == 2 ? .failure(.bad) : .success(n)
@@ -46,7 +46,7 @@ func toResultShortCircuitsAtFirstFailure() async {
 
 @Test
 func toArrayCollectsEveryElementAndDoesNotShortCircuit() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, 2, 3, 4])
         FlatMap { (n: Int) -> Result<Int, E> in
             n.isMultiple(of: 2) ? .failure(.bad) : .success(n)
@@ -59,7 +59,7 @@ func toArrayCollectsEveryElementAndDoesNotShortCircuit() async {
 
 @Test
 func toArrayOnEmptySourceIsEmpty() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         Empty(valueType: Int.self, failureType: E.self)
     }
     let elements = await pipe.toArray()
@@ -70,7 +70,7 @@ func toArrayOnEmptySourceIsEmpty() async {
 
 @Test
 func reduceSumsSuccess() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3, 4])
         Map { (n: Int) in n }
     }
@@ -82,7 +82,7 @@ func reduceSumsSuccess() async {
 
 @Test
 func firstReturnsLeadingElementRegardlessOfKind() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, 2])
         FlatMap { (_: Int) -> Result<Int, E> in .failure(.bad) }
     }
@@ -92,7 +92,7 @@ func firstReturnsLeadingElementRegardlessOfKind() async {
 
 @Test
 func firstSuccessSkipsLeadingFailures() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, E> in
             n < 3 ? .failure(.bad) : .success(n * 10)
@@ -104,7 +104,7 @@ func firstSuccessSkipsLeadingFailures() async {
 
 @Test
 func firstSuccessIsNilWhenAllFailures() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, 2, 3])
         FlatMap { (_: Int) -> Result<Int, E> in .failure(.bad) }
     }
@@ -114,7 +114,7 @@ func firstSuccessIsNilWhenAllFailures() async {
 
 @Test
 func firstErrorSkipsLeadingSuccesses() async {
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, 2, 3, 4])
         FlatMap { (n: Int) -> Result<Int, E> in
             n < 3 ? .success(n) : .failure(.bad)
@@ -126,7 +126,7 @@ func firstErrorSkipsLeadingSuccesses() async {
 
 @Test
 func firstErrorIsNilWhenAllSuccesses() async {
-    let pipe = Pipeline<Int, Never> { From([1, 2, 3]) }
+    let pipe = Pipe<Int, Never> { From([1, 2, 3]) }
     let error: Never? = await pipe.firstError()
     #expect(error == nil)
 }

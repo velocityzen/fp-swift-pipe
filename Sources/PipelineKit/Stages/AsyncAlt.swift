@@ -5,7 +5,7 @@ import FP
 ///
 /// `concurrency` controls how many fallbacks run in parallel. Default 1 is strictly
 /// sequential. With `concurrency > 1` results emit as they complete (unordered).
-struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipelineFlatErrorStage {
+struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
     typealias InputFailure = F
     typealias OutputFailure = F
 
@@ -20,7 +20,7 @@ struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipelineFlatErrorSta
         self.concurrency = max(1, concurrency)
     }
 
-    func attach(_ upstream: Pipeline<Value, F>) -> Pipeline<Value, F> {
+    func attach(_ upstream: Pipe<Value, F>) -> Pipe<Value, F> {
         let alternative = self.alternative
         let concurrency = self.concurrency
         return .erased {
@@ -46,6 +46,6 @@ struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipelineFlatErrorSta
 public func AsyncAlt<Value: Sendable, F: Error & Sendable>(
     concurrency: Int = 1,
     _ alternative: @escaping @Sendable () async -> Result<Value, F>,
-) -> some PipelineFlatErrorStage<Value, F, F> {
+) -> some PipeFlatErrorStage<Value, F, F> {
     AsyncAltStage(alternative, concurrency: concurrency)
 }

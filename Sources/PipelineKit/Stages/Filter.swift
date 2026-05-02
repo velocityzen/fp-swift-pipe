@@ -1,5 +1,5 @@
 /// Keeps only successes that satisfy the predicate. Failures pass through unchanged.
-struct FilterStage<Value: Sendable>: PipelinePolyStage {
+struct FilterStage<Value: Sendable>: PipePolyStage {
     typealias Input = Value
     typealias Output = Value
 
@@ -9,7 +9,7 @@ struct FilterStage<Value: Sendable>: PipelinePolyStage {
         self.predicate = predicate
     }
 
-    func attach<F: Error & Sendable>(_ upstream: Pipeline<Value, F>) -> Pipeline<Value, F> {
+    func attach<F: Error & Sendable>(_ upstream: Pipe<Value, F>) -> Pipe<Value, F> {
         let predicate = self.predicate
         return .erased {
             AnyAsyncSequence(
@@ -27,6 +27,6 @@ struct FilterStage<Value: Sendable>: PipelinePolyStage {
 /// DSL: `Filter { $0.isInteresting }`.
 public func Filter<Value: Sendable>(
     _ predicate: @escaping @Sendable (Value) -> Bool,
-) -> some PipelinePolyStage<Value, Value> {
+) -> some PipePolyStage<Value, Value> {
     FilterStage(predicate)
 }

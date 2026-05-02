@@ -6,7 +6,7 @@ private enum AppError: Error, Equatable, Sendable { case wrapped }
 
 @Test
 func asyncFlatMapErrorRecoversAsynchronously() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, NetError> in
             n == 2 ? .failure(.timeout) : .success(n)
@@ -23,7 +23,7 @@ func asyncFlatMapErrorRecoversAsynchronously() async {
 
 @Test
 func asyncFlatMapErrorCanReFail() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, NetError> in
             n == 2 ? .failure(.timeout) : .success(n)

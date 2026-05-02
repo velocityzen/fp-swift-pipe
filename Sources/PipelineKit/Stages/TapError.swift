@@ -3,7 +3,7 @@ import FP
 /// Observes failures and passes them through unchanged. Successes are not observed.
 ///
 /// Value-polymorphic and failure-bound: `InputFailure == OutputFailure`.
-struct TapErrorStage<F: Error & Sendable>: PipelinePolyValueStage {
+struct TapErrorStage<F: Error & Sendable>: PipePolyValueStage {
     typealias InputFailure = F
     typealias OutputFailure = F
 
@@ -13,7 +13,7 @@ struct TapErrorStage<F: Error & Sendable>: PipelinePolyValueStage {
         self.action = action
     }
 
-    func attach<V: Sendable>(_ upstream: Pipeline<V, F>) -> Pipeline<V, F> {
+    func attach<V: Sendable>(_ upstream: Pipe<V, F>) -> Pipe<V, F> {
         let action = self.action
         return .erased { AnyAsyncSequence(upstream.upstream().tapError(action)) }
     }
@@ -22,6 +22,6 @@ struct TapErrorStage<F: Error & Sendable>: PipelinePolyValueStage {
 /// DSL: `TapError { (e: AppError) in log(e) }`.
 public func TapError<F: Error & Sendable>(
     _ action: @escaping @Sendable (F) -> Void,
-) -> some PipelinePolyValueStage<F, F> {
+) -> some PipePolyValueStage<F, F> {
     TapErrorStage(action)
 }

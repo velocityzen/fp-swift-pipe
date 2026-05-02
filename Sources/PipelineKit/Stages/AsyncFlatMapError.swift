@@ -10,7 +10,7 @@ struct AsyncFlatMapErrorStage<
     Value: Sendable,
     InputFailure: Error & Sendable,
     OutputFailure: Error & Sendable,
->: PipelineFlatErrorStage {
+>: PipeFlatErrorStage {
     private let transform: @Sendable (InputFailure) async -> Result<Value, OutputFailure>
     private let concurrency: Int
 
@@ -22,7 +22,7 @@ struct AsyncFlatMapErrorStage<
         self.concurrency = max(1, concurrency)
     }
 
-    func attach(_ upstream: Pipeline<Value, InputFailure>) -> Pipeline<Value, OutputFailure> {
+    func attach(_ upstream: Pipe<Value, InputFailure>) -> Pipe<Value, OutputFailure> {
         let transform = self.transform
         let concurrency = self.concurrency
         return .erased {
@@ -54,6 +54,6 @@ public func AsyncFlatMapError<
 >(
     concurrency: Int = 1,
     _ transform: @escaping @Sendable (InputFailure) async -> Result<Value, OutputFailure>,
-) -> some PipelineFlatErrorStage<Value, InputFailure, OutputFailure> {
+) -> some PipeFlatErrorStage<Value, InputFailure, OutputFailure> {
     AsyncFlatMapErrorStage(transform, concurrency: concurrency)
 }

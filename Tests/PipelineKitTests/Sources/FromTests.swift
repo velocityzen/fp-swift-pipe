@@ -6,7 +6,7 @@ private enum E: Error, Equatable { case bad }
 
 @Test
 func fromLiftsSyncSequenceIntoSuccesses() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         Map { (n: Int) in n * 10 }
     }
@@ -23,7 +23,7 @@ func fromResultLiftsResultBearingSequenceDirectly() async {
         continuation.finish()
     }
 
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         FromResult(stream)
     }
 
@@ -37,7 +37,7 @@ func fromResultLiftsResultBearingSequenceDirectly() async {
 @Test
 func deferProducesFreshSourcePerIteration() async {
     let counter = Mutex<Int>(0)
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         Defer { () -> [Int] in
             counter.withLock { $0 += 1 }
             return [1, 2, 3]

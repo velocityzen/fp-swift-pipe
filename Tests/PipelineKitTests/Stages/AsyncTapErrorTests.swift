@@ -7,7 +7,7 @@ private enum E: Error, Equatable { case bad }
 @Test
 func asyncTapErrorObservesEveryFailure() async {
     let observed = Mutex<Int>(0)
-    let pipe = Pipeline<Int, E> {
+    let pipe = Pipe<Int, E> {
         From([1, -1, 2, -2])
         FlatMap { (n: Int) -> Result<Int, E> in
             n < 0 ? .failure(.bad) : .success(n)

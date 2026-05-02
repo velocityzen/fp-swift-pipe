@@ -8,7 +8,7 @@ private enum TestError: Error, Equatable { case bad }
 /// resolution + `Never`-widening compose without explicit annotations.
 @Test
 func builderComposesHeterogeneousStages() async {
-    let pipe = Pipeline<String, TestError> {
+    let pipe = Pipe<String, TestError> {
         From([1, 2, 3])
         Map { (n: Int) in n + 1 }
         FlatMap { (n: Int) -> Result<String, TestError> in .success("v=\(n)") }

@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable, Sendable { case bad }
 
 @Test
 func getOrElseReplacesFailuresWithComputedFallback() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([10, 20, 30])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 20 ? .failure(.bad) : .success(n)
@@ -19,7 +19,7 @@ func getOrElseReplacesFailuresWithComputedFallback() async {
 
 @Test
 func getOrElsePassesSuccessesThrough() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, AppError> in .success(n) }
         GetOrElse { (_: AppError) in -1 }

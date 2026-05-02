@@ -4,7 +4,7 @@
 /// `concurrency` controls how many transforms run in parallel. Default 1 is strictly
 /// sequential. With `concurrency > 1` up to N closures run in flight and results emit
 /// as they complete (unordered).
-struct AsyncCompactMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStage {
+struct AsyncCompactMapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
     private let transform: @Sendable (Input) async -> Output?
     private let concurrency: Int
 
@@ -13,7 +13,7 @@ struct AsyncCompactMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStag
         self.concurrency = max(1, concurrency)
     }
 
-    func attach<F: Error & Sendable>(_ upstream: Pipeline<Input, F>) -> Pipeline<Output, F> {
+    func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
         let transform = self.transform
         let concurrency = self.concurrency
         return .erased {
@@ -50,6 +50,6 @@ struct AsyncCompactMapStage<Input: Sendable, Output: Sendable>: PipelinePolyStag
 public func AsyncCompactMap<Input: Sendable, Output: Sendable>(
     concurrency: Int = 1,
     _ transform: @escaping @Sendable (Input) async -> Output?,
-) -> some PipelinePolyStage<Input, Output> {
+) -> some PipePolyStage<Input, Output> {
     AsyncCompactMapStage(transform, concurrency: concurrency)
 }

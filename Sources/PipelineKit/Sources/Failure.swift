@@ -2,7 +2,7 @@ import FP
 
 /// A source that emits a single `.failure` and finishes. The success type must
 /// be supplied because no value is ever produced.
-struct FailureSource<V: Sendable, F: Error & Sendable>: PipelineSource {
+struct FailureSource<V: Sendable, F: Error & Sendable>: PipeSource {
     typealias Output = V
     typealias Failure = F
 
@@ -12,7 +12,7 @@ struct FailureSource<V: Sendable, F: Error & Sendable>: PipelineSource {
         self.error = error
     }
 
-    func produce() -> Pipeline<V, F> {
+    func produce() -> Pipe<V, F> {
         let error = self.error
         return .erased {
             AnyAsyncSequence(AsyncStream<Result<V, F>>.failure(error))
@@ -25,6 +25,6 @@ struct FailureSource<V: Sendable, F: Error & Sendable>: PipelineSource {
 public func Failure<V: Sendable, F: Error & Sendable>(
     _ error: F,
     valueType _: V.Type,
-) -> some PipelineSource<V, F> {
+) -> some PipeSource<V, F> {
     FailureSource(error)
 }

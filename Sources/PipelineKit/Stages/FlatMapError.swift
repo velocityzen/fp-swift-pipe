@@ -8,14 +8,14 @@ struct FlatMapErrorStage<
     Value: Sendable,
     InputFailure: Error & Sendable,
     OutputFailure: Error & Sendable,
->: PipelineFlatErrorStage {
+>: PipeFlatErrorStage {
     private let transform: @Sendable (InputFailure) -> Result<Value, OutputFailure>
 
     init(_ transform: @escaping @Sendable (InputFailure) -> Result<Value, OutputFailure>) {
         self.transform = transform
     }
 
-    func attach(_ upstream: Pipeline<Value, InputFailure>) -> Pipeline<Value, OutputFailure> {
+    func attach(_ upstream: Pipe<Value, InputFailure>) -> Pipe<Value, OutputFailure> {
         let transform = self.transform
         return .erased {
             AnyAsyncSequence(
@@ -35,6 +35,6 @@ public func FlatMapError<
     OutputFailure: Error & Sendable
 >(
     _ transform: @escaping @Sendable (InputFailure) -> Result<Value, OutputFailure>,
-) -> some PipelineFlatErrorStage<Value, InputFailure, OutputFailure> {
+) -> some PipeFlatErrorStage<Value, InputFailure, OutputFailure> {
     FlatMapErrorStage(transform)
 }

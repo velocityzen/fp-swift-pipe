@@ -4,10 +4,10 @@ A small, opinionated library for composing async, error-aware pipelines in Swift
 
 ## Overview
 
-A ``Pipeline`` is a re-iterable description of an async stream of `Result<Success, Failure>`. Stages compose in a `@resultBuilder` DSL declared with ``PipelineBuilder``. Errors live in the `Result.failure` channel — the library is `Result`-only by design, and Swift `throws` never crosses a stage boundary; throwing code is bridged at the closure level using stdlib `Result(catching:)` or fp-swift's `Result.fromAsync { … }`.
+A ``Pipe`` is a re-iterable description of an async stream of `Result<Success, Failure>`. Stages compose in a `@resultBuilder` DSL declared with ``PipeBuilder``. Errors live in the `Result.failure` channel — the library is `Result`-only by design, and Swift `throws` never crosses a stage boundary; throwing code is bridged at the closure level using stdlib `Result(catching:)` or fp-swift's `Result.fromAsync { … }`.
 
 ```swift
-let pipe = Pipeline<Item, AppError> {
+let pipe = Pipe<Item, AppError> {
     From(urls)
     AsyncFlatMap { url in await fetch(url) }
     FlatMap { data in Result { try decode(data) }.mapError(AppError.parse) }
@@ -24,18 +24,18 @@ Stages are typed by what they touch — five protocols cover every shape, from f
 
 ### Core types
 
-- ``Pipeline``
-- ``PipelineBuilder``
+- ``Pipe``
+- ``PipeBuilder``
 - ``AnyAsyncSequence``
 
 ### Stage protocols
 
-- ``PipelineSource``
-- ``PipelineStage``
-- ``PipelinePolyStage``
-- ``PipelinePolyValueStage``
-- ``PipelineForwardingStage``
-- ``PipelineFlatErrorStage``
+- ``PipeSource``
+- ``PipeStage``
+- ``PipePolyStage``
+- ``PipePolyValueStage``
+- ``PipeForwardingStage``
+- ``PipeFlatErrorStage``
 
 ### Sources
 
@@ -97,10 +97,10 @@ Stages are typed by what they touch — five protocols cover every shape, from f
 
 ### Sinks
 
-- ``Pipeline/toResult()``
-- ``Pipeline/toArray()``
-- ``Pipeline/reduce(_:_:)``
-- ``Pipeline/first()``
-- ``Pipeline/firstSuccess()``
-- ``Pipeline/firstError()``
+- ``Pipe/toResult()``
+- ``Pipe/toArray()``
+- ``Pipe/reduce(_:_:)``
+- ``Pipe/first()``
+- ``Pipe/firstSuccess()``
+- ``Pipe/firstError()``
 

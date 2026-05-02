@@ -3,7 +3,7 @@ import Testing
 
 @Test
 func dropSkipsLeadingElements() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([1, 2, 3, 4, 5])
         Drop(2)
     }

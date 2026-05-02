@@ -5,7 +5,7 @@
 
 A small, opinionated library for composing async, error-aware pipelines in Swift.
 
-A `Pipeline<Success, Failure>` is a re-iterable description of an async stream of `Result<Success, Failure>`. Stages compose in a `@resultBuilder` DSL. Errors live in the `Result.failure` channel — the library is `Result`-only by design, and Swift `throws` never crosses a stage boundary. Throwing code is bridged at the call site (see [Working with throwing code](#working-with-throwing-code) below). Built on top of [`fp-swift`](https://github.com/velocityzen/fp-swift).
+A `Pipe<Success, Failure>` is a re-iterable description of an async stream of `Result<Success, Failure>`. Stages compose in a `@resultBuilder` DSL. Errors live in the `Result.failure` channel — the library is `Result`-only by design, and Swift `throws` never crosses a stage boundary. Throwing code is bridged at the call site (see [Working with throwing code](#working-with-throwing-code) below). Built on top of [`fp-swift`](https://github.com/velocityzen/fp-swift).
 
 ## Example
 
@@ -28,8 +28,8 @@ struct Article: Decodable, Sendable {
 }
 
 func fetchArticles(_ urls: [URL]) async -> Result<[Article], AppError> {
-    let pipe = Pipeline<Article, AppError> {
-        // 1. Lift URLs into the pipeline (Pipeline<URL, Never>).
+    let pipe = Pipe<Article, AppError> {
+        // 1. Lift URLs into the pipeline (Pipe<URL, Never>).
         From(urls)
 
         // 2. Concurrent fetches; emission order matches the input order.
@@ -126,7 +126,7 @@ Key shapes used:
 Three stages mirror fp-swift's `Result+Failure` API at the streaming level — each per-element `.failure` is handled by the closure; successes pass through unchanged.
 
 ```swift
-Pipeline<Item, AppError> {
+Pipe<Item, AppError> {
     From(urls)
     AsyncFlatMap { url in await fetch(url) }
 
@@ -149,7 +149,7 @@ PipelineKit is `Result`-only by design. There's no `TryMap` and no throwing-stag
 
 ```swift
 // Sync throwing function → FlatMap
-Pipeline<Item, AppError> {
+Pipe<Item, AppError> {
     From(payloads)
     FlatMap { data in
         Result { try decode(data) }.mapError(AppError.parse)
@@ -157,7 +157,7 @@ Pipeline<Item, AppError> {
 }
 
 // Async throwing function → AsyncFlatMap
-Pipeline<Item, AppError> {
+Pipe<Item, AppError> {
     From(urls)
     AsyncFlatMap { url in
         await Result.fromAsync { try await fetch(url) }
@@ -198,22 +198,22 @@ Compose conditionally **outside** the builder instead. Three patterns:
 let scaler = needsDoubling
     ? Map { (n: Int) in n * 2 }
     : Map { (n: Int) in n }
-let pipe = Pipeline<Int, Never> {
+let pipe = Pipe<Int, Never> {
     From(0..<10)
     scaler
 }
 
 // 2. Branch on the whole pipeline.
-let base = Pipeline<Int, Never> { From(0..<10) }
+let base = Pipe<Int, Never> { From(0..<10) }
 let final = needsDoubling
-    ? Pipeline<Int, Never> { FromResult(base); Map { (n: Int) in n * 2 } }
+    ? Pipe<Int, Never> { FromResult(base); Map { (n: Int) in n * 2 } }
     : base
 
-// 3. Build incrementally — each Pipeline is itself an AsyncSequence<Result<…>>,
+// 3. Build incrementally — each Pipe is itself an AsyncSequence<Result<…>>,
 //    so re-wrap with `FromResult` to extend it.
-var p = Pipeline<Int, Never> { From(0..<10) }
+var p = Pipe<Int, Never> { From(0..<10) }
 if needsDoubling {
-    p = Pipeline<Int, Never> {
+    p = Pipe<Int, Never> {
         FromResult(p)
         Map { (n: Int) in n * 2 }
     }
@@ -224,18 +224,18 @@ Pattern 1 is preferred when the conditional is local to one stage's behavior. Pa
 
 ## Design
 
-A `Pipeline<S, F>` is itself an `AsyncSequence<Result<S, F>>` — sinks are just iteration. Each `makeAsyncIterator()` reconstructs the underlying chain via a stored `@Sendable` builder, so pipeline values are re-iterable and free of shared mutable state.
+A `Pipe<S, F>` is itself an `AsyncSequence<Result<S, F>>` — sinks are just iteration. Each `makeAsyncIterator()` reconstructs the underlying chain via a stored `@Sendable` builder, so pipeline values are re-iterable and free of shared mutable state.
 
 Stages are typed by what they touch:
 
 | Protocol | Value | Failure | Examples |
 |---|---|---|---|
-| `PipelineStage` | bound | bound | `FlatMap`, `AsyncFlatMap` |
-| `PipelinePolyStage` | bound | poly | `Map`, `Tap`, `Filter` |
-| `PipelinePolyValueStage` | poly | bound | `MapError`, `TapError` |
-| `PipelineForwardingStage` | poly | poly | `Take`, `Drop` |
-| `PipelineFlatErrorStage` | bound | bound (in/out) | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `OrElse`, `GetOrElse` |
-| `PipelineFoldStage` | A → R | `F` → `Never` | `Match`, `AsyncMatch` (fold both channels) |
+| `PipeStage` | bound | bound | `FlatMap`, `AsyncFlatMap` |
+| `PipePolyStage` | bound | poly | `Map`, `Tap`, `Filter` |
+| `PipePolyValueStage` | poly | bound | `MapError`, `TapError` |
+| `PipeForwardingStage` | poly | poly | `Take`, `Drop` |
+| `PipeFlatErrorStage` | bound | bound (in/out) | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `OrElse`, `GetOrElse` |
+| `PipeFoldStage` | A → R | `F` → `Never` | `Match`, `AsyncMatch` (fold both channels) |
 
 The result builder has one `buildPartialBlock` overload per shape, plus a `Never`-widening overload so non-failable sources compose naturally with failure-introducing stages without an explicit `MapError`.
 

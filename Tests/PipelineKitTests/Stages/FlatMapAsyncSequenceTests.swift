@@ -5,7 +5,7 @@ private enum AppError: Error, Equatable { case bad }
 
 @Test
 func flatMapAsyncSequenceFansOutEachSuccess() async {
-    let pipe = Pipeline<Int, Never> {
+    let pipe = Pipe<Int, Never> {
         From([2, 3])
         FlatMapAsyncSequence { (n: Int) in
             AsyncStream<Int> { continuation in
@@ -23,7 +23,7 @@ func flatMapAsyncSequenceFansOutEachSuccess() async {
 
 @Test
 func flatMapAsyncSequencePassesFailuresThrough() async {
-    let pipe = Pipeline<Int, AppError> {
+    let pipe = Pipe<Int, AppError> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, AppError> in
             n == 2 ? .failure(.bad) : .success(n)

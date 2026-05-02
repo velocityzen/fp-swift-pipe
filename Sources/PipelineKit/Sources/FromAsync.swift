@@ -4,7 +4,7 @@ import FP
 
 /// Defers an `AsyncSequence` source behind an `async` closure. Each iteration awaits
 /// the closure, then drains the returned sequence.
-struct AsyncDeferredAsyncSequenceSource<S: AsyncSequence & Sendable>: PipelineSource
+struct AsyncDeferredAsyncSequenceSource<S: AsyncSequence & Sendable>: PipeSource
 where S.Element: Sendable, S.Failure == Never {
     typealias Output = S.Element
     typealias Failure = Never
@@ -15,7 +15,7 @@ where S.Element: Sendable, S.Failure == Never {
         self.make = make
     }
 
-    func produce() -> Pipeline<S.Element, Never> {
+    func produce() -> Pipe<S.Element, Never> {
         let make = self.make
         return .erased {
             AnyAsyncSequence(
@@ -37,7 +37,7 @@ where S.Element: Sendable, S.Failure == Never {
 
 /// Defers a synchronous `Sequence` source behind an `async` closure. Each iteration
 /// awaits the closure, then drains the returned sequence.
-struct AsyncDeferredSyncSequenceSource<S: Sequence & Sendable>: PipelineSource
+struct AsyncDeferredSyncSequenceSource<S: Sequence & Sendable>: PipeSource
 where S.Element: Sendable {
     typealias Output = S.Element
     typealias Failure = Never
@@ -48,7 +48,7 @@ where S.Element: Sendable {
         self.make = make
     }
 
-    func produce() -> Pipeline<S.Element, Never> {
+    func produce() -> Pipe<S.Element, Never> {
         let make = self.make
         return .erased {
             AnyAsyncSequence(
@@ -73,7 +73,7 @@ struct AsyncDeferredResultSequenceSource<
     S: AsyncSequence & Sendable,
     V: Sendable,
     E: Error & Sendable,
->: PipelineSource
+>: PipeSource
 where S.Element == Result<V, E>, S.Failure == Never {
     typealias Output = V
     typealias Failure = E
@@ -84,7 +84,7 @@ where S.Element == Result<V, E>, S.Failure == Never {
         self.make = make
     }
 
-    func produce() -> Pipeline<V, E> {
+    func produce() -> Pipe<V, E> {
         let make = self.make
         return .erased {
             AnyAsyncSequence(
@@ -111,7 +111,7 @@ where S.Element == Result<V, E>, S.Failure == Never {
 /// authenticated streams, network-bound preludes).
 public func FromAsync<S: AsyncSequence & Sendable>(
     _ make: @escaping @Sendable () async -> S,
-) -> some PipelineSource<S.Element, Never>
+) -> some PipeSource<S.Element, Never>
 where S.Element: Sendable, S.Failure == Never {
     AsyncDeferredAsyncSequenceSource(make)
 }
@@ -121,7 +121,7 @@ where S.Element: Sendable, S.Failure == Never {
 /// fetch, decode) yields a finite collection to iterate over.
 public func FromAsync<S: Sequence & Sendable>(
     _ make: @escaping @Sendable () async -> S,
-) -> some PipelineSource<S.Element, Never>
+) -> some PipeSource<S.Element, Never>
 where S.Element: Sendable {
     AsyncDeferredSyncSequenceSource(make)
 }
@@ -129,7 +129,7 @@ where S.Element: Sendable {
 /// Lift an async-produced `AsyncSequence` of `Result` elements into a pipeline source.
 public func FromAsyncResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>(
     _ make: @escaping @Sendable () async -> S,
-) -> some PipelineSource<V, E>
+) -> some PipeSource<V, E>
 where S.Element == Result<V, E>, S.Failure == Never {
     AsyncDeferredResultSequenceSource(make)
 }
