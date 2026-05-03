@@ -3,7 +3,7 @@
 [![Documentation](https://img.shields.io/badge/documentation-DocC-purple)](https://swiftpackageindex.com/velocityzen/fp-swift-pipe/documentation/fppipe)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A small, opinionated library for composing async, error-aware pipelines in Swift.
+A small library for declarative async, error-aware pipelines in Swift.
 
 A `Pipe<Success, Failure>` is a lazy description of an async stream of `Result<Success, Failure>`. Stages compose in a `@resultBuilder` DSL. Errors live in the `Result.failure` channel — the library is `Result`-only by design, and Swift `throws` never crosses a stage boundary. Throwing code is bridged at the call site (see [Working with throwing code](#working-with-throwing-code) below). Built on top of [`fp-swift`](https://github.com/velocityzen/fp-swift).
 
