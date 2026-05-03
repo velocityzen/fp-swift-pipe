@@ -1,6 +1,6 @@
-# PipelineKit
+# FPPipe
 
-[![Documentation](https://img.shields.io/badge/documentation-DocC-purple)](https://swiftpackageindex.com/velocityzen/PipelineKit/documentation/pipelinekit)
+[![Documentation](https://img.shields.io/badge/documentation-DocC-purple)](https://swiftpackageindex.com/velocityzen/fp-swift-pipe/documentation/fppipe)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A small, opinionated library for composing async, error-aware pipelines in Swift.
@@ -14,7 +14,7 @@ A `Pipe` is **re-iterable when its source is**. Replayable sources (`Array`, `Ra
 A realistic article-fetching pipeline. Concurrent fetches preserve source order, throwing decode is bridged into a typed failure channel, rate-limit failures are recovered with a fallback, and other failures short-circuit:
 
 ```swift
-import PipelineKit
+import FPPipe
 import FP
 
 enum AppError: Error, Sendable {
@@ -179,7 +179,7 @@ Open pipes accept all the same stages as closed pipes — every builder overload
 
 ## Working with throwing code
 
-PipelineKit is `Result`-only by design. There's no `TryMap` and no throwing-stage variant of any operator — stages take and return `Result`, period. The library nudges you to express your code in `Result`-land first, where success and failure are values, then compose. When you have to call a throwing API, bridge it at the closure boundary using stdlib's `Result(catching:)` for sync code and fp-swift's `Result.fromAsync { … }` for async:
+FPPipe is `Result`-only by design. There's no `TryMap` and no throwing-stage variant of any operator — stages take and return `Result`, period. The library nudges you to express your code in `Result`-land first, where success and failure are values, then compose. When you have to call a throwing API, bridge it at the closure boundary using stdlib's `Result(catching:)` for sync code and fp-swift's `Result.fromAsync { … }` for async:
 
 ```swift
 // Sync throwing function → FlatMap
@@ -225,7 +225,7 @@ Use the unordered variants when order doesn't matter (typical for fan-out fetch 
 
 When the consumer breaks out of `for await` (or the surrounding `Task` is cancelled), the pipeline tears down promptly: the iterator deinits, in-flight tasks receive a cancellation signal, and the consumer returns immediately — it does **not** wait for the in-flight transforms to complete.
 
-Whether the in-flight transforms themselves stop quickly depends on the transform body. **Cooperative transforms** — anything that awaits a cancellation-aware operation like `Task.sleep`, `URLSession.data`, or `try Task.checkCancellation()` — bail out as soon as the cancellation signal arrives. **Non-cooperative transforms** — tight CPU loops with no await and no `Task.isCancelled` check — run to completion regardless. This is a property of Swift's structured concurrency, not of PipelineKit; the takeaway is that for cancellation-sensitive workloads (long-running compute under `concurrency: N`), put a `Task.isCancelled` check or `try Task.checkCancellation()` somewhere in the closure.
+Whether the in-flight transforms themselves stop quickly depends on the transform body. **Cooperative transforms** — anything that awaits a cancellation-aware operation like `Task.sleep`, `URLSession.data`, or `try Task.checkCancellation()` — bail out as soon as the cancellation signal arrives. **Non-cooperative transforms** — tight CPU loops with no await and no `Task.isCancelled` check — run to completion regardless. This is a property of Swift's structured concurrency, not of FPPipe; the takeaway is that for cancellation-sensitive workloads (long-running compute under `concurrency: N`), put a `Task.isCancelled` check or `try Task.checkCancellation()` somewhere in the closure.
 
 ## Conditional composition
 

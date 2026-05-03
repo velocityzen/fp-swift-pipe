@@ -1,4 +1,4 @@
-# SwiftLint configuration for PipelineKit.
+# SwiftLint configuration for FPPipe.
 # Run: `swiftlint`                — list violations
 # Run: `swiftlint --strict`       — fail on any warning (CI)
 # Run: `swiftlint --fix`          — auto-fix where possible
@@ -7,7 +7,7 @@
 excluded:
   - .build
   - Package.swift
-  - Sources/PipelineKit/PipelineKit.docc
+  - Sources/FPPipe/FPPipe.docc
 
 # Disable rules that fight the DSL conventions.
 # The DSL exposes UpperCamelCase factory functions (`Map`, `Filter`, `From`, …) — that's
