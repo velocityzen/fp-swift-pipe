@@ -22,7 +22,9 @@ private func asyncStream<T: Sendable>(
             await body(continuation)
             continuation.finish()
         }
-        continuation.onTermination = { _ in task.cancel() }
+        continuation.onTermination = { _ in
+            task.cancel()
+        }
     }
 }
 
@@ -44,8 +46,13 @@ where
             // Prime up to N tasks.
             for _ in 0..<concurrency {
                 if Task.isCancelled { break }
-                guard let element = try? await iter.next() else { break }
-                group.addTask { await transform(element) }
+                guard let element = try? await iter.next() else {
+                    break
+                }
+
+                group.addTask {
+                    await transform(element)
+                }
             }
 
             // Drain: every completion emits a result and pulls the next source element.
@@ -56,7 +63,9 @@ where
                 }
                 continuation.yield(result)
                 if let element = try? await iter.next() {
-                    group.addTask { await transform(element) }
+                    group.addTask {
+                        await transform(element)
+                    }
                 }
             }
         }
@@ -77,7 +86,9 @@ where
     asyncStream { continuation in
         for await result in mapAsyncUnordered(source, concurrency: concurrency, transform) {
             if Task.isCancelled { break }
-            if let value = result { continuation.yield(value) }
+            if let value = result {
+                continuation.yield(value)
+            }
         }
     }
 }
@@ -100,8 +111,12 @@ where
         // Prime the sliding window with up to N tasks.
         for _ in 0..<concurrency {
             if Task.isCancelled { break }
-            guard let element = try? await iter.next() else { break }
-            window.append(Task { await transform(element) })
+            guard let element = try? await iter.next() else {
+                break
+            }
+            window.append(
+                Task { await transform(element) }
+            )
         }
 
         // Drain head, refill back, preserving source order. Cancellation is checked both
@@ -113,15 +128,20 @@ where
                 window.removeAll()
                 break
             }
+
             let head = window.removeFirst()
             continuation.yield(await head.value)
+
             if Task.isCancelled {
                 for pending in window { pending.cancel() }
                 window.removeAll()
                 break
             }
+
             if let element = try? await iter.next() {
-                window.append(Task { await transform(element) })
+                window.append(
+                    Task { await transform(element) }
+                )
             }
         }
     }
