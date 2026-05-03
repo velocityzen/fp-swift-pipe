@@ -81,6 +81,13 @@ public func From<S: Sequence & Sendable>(
     SyncSequenceSource(source)
 }
 
+/// Open-source marker — declares an `Input` type to be supplied at call time. The enclosing
+/// `OpenPipe { … }` builder produces an `OpenPipe<Input, …, …>` that's callable as
+/// `pipe(source)`.
+public func From<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
+    OpenSource<Input>()
+}
+
 // MARK: - Deferred sources (non-autoclosure form)
 
 /// Defer construction of an `AsyncSequence` source until the pipeline is iterated.

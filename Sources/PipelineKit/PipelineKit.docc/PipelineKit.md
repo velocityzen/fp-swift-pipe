@@ -25,6 +25,8 @@ Stages are typed by what they touch — five protocols cover every shape, from f
 ### Core types
 
 - ``Pipe``
+- ``OpenPipe``
+- ``OpenSource``
 - ``PipeBuilder``
 - ``AnyAsyncSequence``
 

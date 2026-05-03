@@ -133,3 +133,9 @@ public func FromAsyncResult<S: AsyncSequence & Sendable, V: Sendable, E: Error &
 where S.Element == Result<V, E>, S.Failure == Never {
     AsyncDeferredResultSequenceSource(make)
 }
+
+/// Open-source marker — alias for `From(_:Input.Type)` provided for symmetry with the
+/// closure-form `FromAsync`. Declares an `Input` type to be supplied at call time.
+public func FromAsync<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
+    OpenSource<Input>()
+}

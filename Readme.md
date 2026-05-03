@@ -105,6 +105,7 @@ Key shapes used:
 | `FromResult(seq)` | Lift an `AsyncSequence` of `Result` elements directly. |
 | `Defer { … }` / `DeferResult { … }` | Multi-statement, re-iteration-fresh source construction. |
 | `FromAsync { await … }` / `FromAsyncResult { … }` | Source whose **producer is async** — useful when iteration needs async setup (cursors, authenticated streams). Closure is re-awaited per iteration. |
+| `From(T.self)` / `FromAsync(T.self)` | **Open** marker — declares an `Input` to be supplied at call time. Builds an `OpenPipe<T, …, …>` instead of a `Pipe`. See [Open pipes](#open-pipes). |
 | `Success(value)` / `Of(value)` | Single success (`Of` is an alias). |
 | `Failure(error, valueType:)` | Single failure. |
 | `Empty(valueType:failureType:)` | Empty source. |
@@ -142,6 +143,25 @@ Pipe<Item, AppError> {
 ```
 
 Each comes with an `Async*` variant (`AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse`) for cache lookups, retries, or any other async fallback.
+
+## Open pipes
+
+A pipeline that starts with `From(T.self)` (or `FromAsync(T.self)`) leaves the source slot open and builds an `OpenPipe<Input, Success, Failure>` — a re-callable function from a `Sequence`/`AsyncSequence` to a regular `Pipe`. Construct an open pipe once, call it with different inputs:
+
+```swift
+let pipe = OpenPipe {
+    From(Int.self)
+    Filter { $0 > 0 }
+    Map { (n: Int) in n * 2 }
+}
+
+for await x in pipe([1, -1, 2]) { … }            // closed Pipe<Int, Never>
+for await x in pipe(asyncStreamOfInts) { … }     // also a closed Pipe
+```
+
+`pipe(source)` accepts any `Sequence` or `AsyncSequence` whose `Element == Input`. The returned `Pipe` is itself re-iterable in the usual way. Useful when the same pipeline shape needs to run over multiple inputs (per-request handlers, batch jobs over different cohorts, test setups), without rebuilding the stage chain.
+
+Open pipes accept all the same stages as closed pipes — every builder overload has an open-pipe variant.
 
 ## Working with throwing code
 

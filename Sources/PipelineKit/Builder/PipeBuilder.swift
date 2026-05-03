@@ -77,6 +77,81 @@ public enum PipeBuilder {
     ) -> Pipe<V, St.OutputFailure> where St.InputFailure == Never {
         stage.attach(accumulated)
     }
+
+    // MARK: - Open-pipe variants
+    //
+    // These mirror the closed-pipe overloads but accumulate an `OpenPipe` whose
+    // source slot is filled later by `OpenPipe.callAsFunction(_:)`. Each overload
+    // composes the new stage into the accumulated function.
+
+    public static func buildPartialBlock<I: Sendable>(
+        first: OpenSource<I>,
+    ) -> OpenPipe<I, I, Never> {
+        OpenPipe(apply: { $0 })
+    }
+
+    public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
+        accumulated: OpenPipe<I, U, St.Failure>,
+        next stage: St,
+    ) -> OpenPipe<I, St.Output, St.Failure> where St.Input == U {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    public static func buildPartialBlock<
+        I: Sendable,
+        U: Sendable,
+        F: Error & Sendable,
+        St: PipePolyStage,
+    >(
+        accumulated: OpenPipe<I, U, F>,
+        next stage: St,
+    ) -> OpenPipe<I, St.Output, F> where St.Input == U {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
+        accumulated: OpenPipe<I, V, St.InputFailure>,
+        next stage: St,
+    ) -> OpenPipe<I, V, St.OutputFailure> {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    public static func buildPartialBlock<I: Sendable, V: Sendable, F: Error & Sendable>(
+        accumulated: OpenPipe<I, V, F>,
+        next stage: some PipeForwardingStage,
+    ) -> OpenPipe<I, V, F> {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    public static func buildPartialBlock<I: Sendable, St: PipeFlatErrorStage>(
+        accumulated: OpenPipe<I, St.Value, St.InputFailure>,
+        next stage: St,
+    ) -> OpenPipe<I, St.Value, St.OutputFailure> {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    public static func buildPartialBlock<I: Sendable, St: PipeFoldStage>(
+        accumulated: OpenPipe<I, St.Input, St.InputFailure>,
+        next stage: St,
+    ) -> OpenPipe<I, St.Output, Never> {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    /// Widening overload (open-pipe form): non-failable upstream → failure-fixed stage.
+    public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
+        accumulated: OpenPipe<I, U, Never>,
+        next stage: St,
+    ) -> OpenPipe<I, St.Output, St.Failure> where St.Input == U {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0).widenFailure(to: St.Failure.self)) })
+    }
+
+    /// Widening overload (open-pipe form): non-failable upstream → value-poly failure stage.
+    public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
+        accumulated: OpenPipe<I, V, Never>,
+        next stage: St,
+    ) -> OpenPipe<I, V, St.OutputFailure> where St.InputFailure == Never {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
 }
 
 // MARK: - Pipe initializer
