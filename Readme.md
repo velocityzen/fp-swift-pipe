@@ -104,6 +104,7 @@ Key shapes used:
 | `Defer { … }` / `DeferResult { … }` | Multi-statement, re-iteration-fresh source construction. |
 | `FromAsync { await … }` / `FromAsyncResult { … }` | Source whose **producer is async** — useful when iteration needs async setup (cursors, authenticated streams). Closure is re-awaited per iteration. |
 | `From(T.self)` / `FromAsync(T.self)` | **Open** marker — declares an `Input` to be supplied at call time. Builds an `OpenPipe<T, …, …>` instead of a `Pipe`. See [Open pipes](#open-pipes). |
+| `FromResult(V.self, E.self)` / `FromAsyncResult(V.self, E.self)` | **Open** marker for a Result-bearing input — `pipe(stream)` accepts an `AsyncSequence<Result<V, E>>` and lifts inner failures into the channel. |
 | `Success(value)` / `Of(value)` | Single success (`Of` is an alias). |
 | `Failure(error, valueType:)` | Single failure. |
 | `Empty(valueType:failureType:)` | Empty source. |
@@ -158,6 +159,19 @@ for await x in pipe(asyncStreamOfInts) { … }     // also a closed Pipe
 ```
 
 `pipe(source)` accepts any `Sequence` or `AsyncSequence` whose `Element == Input`. The returned `Pipe` is itself re-iterable in the usual way. Useful when the same pipeline shape needs to run over multiple inputs (per-request handlers, batch jobs over different cohorts, test setups), without rebuilding the stage chain.
+
+For Result-bearing input streams, use the `FromResult(V.self, E.self)` marker — the inner `Result`s lift directly into the pipe's failure channel, so downstream stages see unwrapped successes:
+
+```swift
+let pipe = OpenPipe {
+    FromResult(Int.self, MyError.self)
+    Map { (n: Int) in n * 10 }
+    FlatMapError { (_: MyError) -> Result<Int, MyError> in .success(0) }
+}
+
+let stream: AsyncStream<Result<Int, MyError>> = …
+for await x in pipe(stream) { … }      // Pipe<Int, MyError>
+```
 
 Open pipes accept all the same stages as closed pipes — every builder overload has an open-pipe variant.
 

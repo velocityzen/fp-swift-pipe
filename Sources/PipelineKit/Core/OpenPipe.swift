@@ -44,3 +44,12 @@ public extension OpenPipe {
 public struct OpenSource<Input: Sendable>: Sendable {
     public init() {}
 }
+
+/// Marker source for an "open" Result-bearing pipeline — declares the value/failure types
+/// of an `AsyncSequence<Result<V, E>>` (or `Sequence<Result<V, E>>`) to be supplied at
+/// call time. Unlike `OpenSource`, the inner `Result`s lift directly into the pipe's
+/// failure channel — `pipe(stream)` returns `Pipe<…, E>`, and stages downstream see
+/// the unwrapped successes / propagated failures.
+public struct OpenResultSource<Value: Sendable, Failure: Error & Sendable>: Sendable {
+    public init() {}
+}

@@ -90,6 +90,25 @@ public enum PipeBuilder {
         OpenPipe(apply: { $0 })
     }
 
+    /// Result-bearing open source: callers will supply an `AsyncSequence<Result<V, E>>`,
+    /// and the inner `Result`s lift into the channel so downstream sees `Pipe<V, E>`.
+    public static func buildPartialBlock<V: Sendable, E: Error & Sendable>(
+        first: OpenResultSource<V, E>,
+    ) -> OpenPipe<Result<V, E>, V, E> {
+        OpenPipe(apply: { lifted in
+            Pipe<V, E>.erased {
+                AnyAsyncSequence(
+                    lifted.upstream().map {
+                        (wrapped: Result<Result<V, E>, Never>) -> Result<V, E> in
+                        switch wrapped {
+                            case .success(let inner): return inner
+                        }
+                    },
+                )
+            }
+        })
+    }
+
     public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
         accumulated: OpenPipe<I, U, St.Failure>,
         next stage: St,

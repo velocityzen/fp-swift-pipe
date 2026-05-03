@@ -120,6 +120,47 @@ func fromAsyncOpenSourceIsEquivalentToFrom() async {
     #expect(result == .success([3, 6, 9]))
 }
 
+// MARK: - Result-bearing open source
+
+@Test
+func openPipeFromResultLiftsInnerResultsIntoChannel() async {
+    let pipe = OpenPipe {
+        FromResult(Int.self, E.self)
+        Map { (n: Int) in n * 10 }
+    }
+    let stream: [Result<Int, E>] = [.success(1), .failure(.bad), .success(2)]
+    var seen: [Result<Int, E>] = []
+    for await x in pipe(stream) { seen.append(x) }
+    #expect(seen == [.success(10), .failure(.bad), .success(20)])
+}
+
+@Test
+func openPipeFromResultWithAsyncSource() async {
+    let pipe = OpenPipe {
+        FromResult(Int.self, E.self)
+        FlatMapError { (_: E) -> Result<Int, E> in .success(99) }
+    }
+    let stream = AsyncStream<Result<Int, E>> { continuation in
+        continuation.yield(.success(1))
+        continuation.yield(.failure(.bad))
+        continuation.yield(.success(2))
+        continuation.finish()
+    }
+    let result = await pipe(stream).toResult()
+    #expect(result == .success([1, 99, 2]))
+}
+
+@Test
+func openPipeFromAsyncResultIsAlias() async {
+    let pipe = OpenPipe {
+        FromAsyncResult(Int.self, E.self)
+        Map { (n: Int) in n + 1 }
+    }
+    let stream: [Result<Int, E>] = [.success(10), .success(20)]
+    let result = await pipe(stream).toResult()
+    #expect(result == .success([11, 21]))
+}
+
 // MARK: - Re-iterability of the closed Pipe returned from a call
 
 @Test

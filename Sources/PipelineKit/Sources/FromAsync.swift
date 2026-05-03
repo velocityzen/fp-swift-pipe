@@ -139,3 +139,12 @@ where S.Element == Result<V, E>, S.Failure == Never {
 public func FromAsync<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
     OpenSource<Input>()
 }
+
+/// Open-source marker for a Result-bearing input — alias for `FromResult(_:_:)` provided
+/// for symmetry with the closure-form `FromAsyncResult`.
+public func FromAsyncResult<V: Sendable, E: Error & Sendable>(
+    _: V.Type,
+    _: E.Type,
+) -> OpenResultSource<V, E> {
+    OpenResultSource<V, E>()
+}

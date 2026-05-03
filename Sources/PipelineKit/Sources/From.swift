@@ -88,6 +88,17 @@ public func From<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
     OpenSource<Input>()
 }
 
+/// Open-source marker for a Result-bearing input — declares an inner value/failure type
+/// to be supplied at call time as an `AsyncSequence<Result<V, E>>` (or `Sequence`). The
+/// enclosing `OpenPipe { … }` builder produces an `OpenPipe<Result<V, E>, V, E>` whose
+/// downstream stages see unwrapped successes and failures lifted into the channel.
+public func FromResult<V: Sendable, E: Error & Sendable>(
+    _: V.Type,
+    _: E.Type,
+) -> OpenResultSource<V, E> {
+    OpenResultSource<V, E>()
+}
+
 // MARK: - Deferred sources (non-autoclosure form)
 
 /// Defer construction of an `AsyncSequence` source until the pipeline is iterated.
