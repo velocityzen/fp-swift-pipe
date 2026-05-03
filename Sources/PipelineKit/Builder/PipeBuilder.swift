@@ -152,6 +152,119 @@ public enum PipeBuilder {
     ) -> OpenPipe<I, V, St.OutputFailure> where St.InputFailure == Never {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
+
+    // MARK: - Stage-only block bodies (for branch / loop bodies)
+    //
+    // The body of an `if`, `else`, `switch case`, or `for` is itself processed by this
+    // builder. When such a body is a single stage (no source), we pass the stage through
+    // unchanged. The stage is then applied by the outer accumulator's `buildPartialBlock`.
+
+    public static func buildPartialBlock<St: PipeStage>(first stage: St) -> St { stage }
+    public static func buildPartialBlock<St: PipePolyStage>(first stage: St) -> St { stage }
+    public static func buildPartialBlock<St: PipePolyValueStage>(first stage: St) -> St { stage }
+    public static func buildPartialBlock<St: PipeForwardingStage>(first stage: St) -> St { stage }
+    public static func buildPartialBlock<St: PipeFlatErrorStage>(first stage: St) -> St { stage }
+    public static func buildPartialBlock<St: PipeFoldStage>(first stage: St) -> St { stage }
+
+    // MARK: - Conditional composition (`if/else`, `switch`)
+    //
+    // Both branches must produce a value of the same Swift type. In practice that means
+    // the same stage shape with the same Input/Output/Failure. Mixing stage protocols
+    // (e.g. Map in one branch, Filter in another) won't unify — Swift catches this.
+
+    public static func buildEither<C>(first component: C) -> C { component }
+    public static func buildEither<C>(second component: C) -> C { component }
+
+    // MARK: - Optional composition (`if` without `else`)
+    //
+    // `buildOptional` wraps the body's stage in `OptionalStage<St>`. The outer
+    // `buildPartialBlock` overloads applies the stage if present, passes through if absent.
+    // Only type-preserving stages are allowed — otherwise the absent case couldn't yield
+    // the same Pipe type as the present case.
+
+    public static func buildOptional<St>(_ component: St?) -> OptionalStage<St> {
+        OptionalStage(stage: component)
+    }
+
+    public static func buildPartialBlock<V: Sendable, F: Error & Sendable, St: PipeForwardingStage>(
+        accumulated: Pipe<V, F>,
+        next optional: OptionalStage<St>,
+    ) -> Pipe<V, F> {
+        guard let stage = optional.stage else { return accumulated }
+        return stage.attach(accumulated)
+    }
+
+    public static func buildPartialBlock<U: Sendable, F: Error & Sendable, St: PipePolyStage>(
+        accumulated: Pipe<U, F>,
+        next optional: OptionalStage<St>,
+    ) -> Pipe<U, F> where St.Input == U, St.Output == U {
+        guard let stage = optional.stage else { return accumulated }
+        return stage.attach(accumulated)
+    }
+
+    public static func buildPartialBlock<V: Sendable, St: PipePolyValueStage>(
+        accumulated: Pipe<V, St.InputFailure>,
+        next optional: OptionalStage<St>,
+    ) -> Pipe<V, St.InputFailure> where St.InputFailure == St.OutputFailure {
+        guard let stage = optional.stage else { return accumulated }
+        return stage.attach(accumulated)
+    }
+
+    public static func buildPartialBlock<
+        I: Sendable,
+        V: Sendable,
+        F: Error & Sendable,
+        St: PipeForwardingStage,
+    >(
+        accumulated: OpenPipe<I, V, F>,
+        next optional: OptionalStage<St>,
+    ) -> OpenPipe<I, V, F> {
+        OpenPipe(apply: { input in
+            let acc = accumulated.apply(input)
+            guard let stage = optional.stage else { return acc }
+            return stage.attach(acc)
+        })
+    }
+
+    public static func buildPartialBlock<
+        I: Sendable,
+        U: Sendable,
+        F: Error & Sendable,
+        St: PipePolyStage,
+    >(
+        accumulated: OpenPipe<I, U, F>,
+        next optional: OptionalStage<St>,
+    ) -> OpenPipe<I, U, F> where St.Input == U, St.Output == U {
+        OpenPipe(apply: { input in
+            let acc = accumulated.apply(input)
+            guard let stage = optional.stage else { return acc }
+            return stage.attach(acc)
+        })
+    }
+
+    public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
+        accumulated: OpenPipe<I, V, St.InputFailure>,
+        next optional: OptionalStage<St>,
+    ) -> OpenPipe<I, V, St.InputFailure> where St.InputFailure == St.OutputFailure {
+        OpenPipe(apply: { input in
+            let acc = accumulated.apply(input)
+            guard let stage = optional.stage else { return acc }
+            return stage.attach(acc)
+        })
+    }
+
+    // Note on `for` loops: deliberately not supported. `buildArray` would need
+    // `[some PipePolyStage<I, O>]`, but the Swift compiler can't infer the underlying
+    // opaque type when the loop body produces stages whose factories return
+    // `some Protocol`. Compose loops outside the builder by reducing into a single stage
+    // (e.g. `Map(transforms.reduce(id, compose))`).
+}
+
+/// Wrapper produced by `PipeBuilder.buildOptional` so the outer fold can recognise an
+/// "optional stage" position. Only type-preserving stages can be optional, since the
+/// absent case must yield the same Pipe type as the present case.
+public struct OptionalStage<St>: Sendable where St: Sendable {
+    let stage: St?
 }
 
 // MARK: - Pipe initializer

@@ -209,27 +209,60 @@ Use `AsyncMap(concurrency: N)` when order doesn't matter (typical for fan-out fe
 
 ## Conditional composition
 
-The result builder doesn't support `if` / `else` / `guard` inside the body. Each `buildPartialBlock` call changes the pipeline's type, so heterogeneous branches can't be reconciled into a single uniform type without `buildEither`/`buildOptional` overloads — which we deliberately omit (they constrain both branches to identical types, which the heterogeneous-stage zoo makes unergonomic).
-
-Compose conditionally **outside** the builder instead. Three patterns:
+`if/else` and `switch` work inside the builder, **as long as every branch produces the same stage type** (e.g. all branches return `Map<Int, Int>`). The result builder requires uniform types — a branch returning `Map` and another returning `Filter` won't compile, and Swift's error message will tell you so.
 
 ```swift
-// 1. Pick a stage at the call site (homogeneous return type).
-let scaler = needsDoubling
-    ? Map { (n: Int) in n * 2 }
-    : Map { (n: Int) in n }
 let pipe = Pipe<Int, Never> {
     From(0..<10)
-    scaler
-}
 
-// 2. Branch on the whole pipeline.
+    if needsDoubling {
+        Map { (n: Int) in n * 2 }    // both branches: Map<Int, Int>
+    } else {
+        Map { (n: Int) in n + 1 }
+    }
+
+    switch mode {
+        case .even: Filter { (n: Int) in n.isMultiple(of: 2) }   // all cases: Filter<Int>
+        case .odd:  Filter { (n: Int) in !n.isMultiple(of: 2) }
+        case .all:  Filter { (_: Int) in true }
+    }
+}
+```
+
+`if` without `else` works for **type-preserving stages only** — `Take`, `Drop`, `Tap`, `TapError`, `AsyncTap`, `AsyncTapError`, and any `Filter`/`Map`/`AsyncFilter`/`AsyncMap` whose Input equals Output. The "absent" branch must yield the same Pipe type as the "present" branch, which forces the stage not to change types.
+
+```swift
+let pipe = Pipe<Int, Never> {
+    From(0..<10)
+    if logging { Tap { print($0) } }    // type-preserving — OK
+    if dropFirst { Drop(2) }             // forwarding stage — OK
+    if dropOdds { Filter { $0.isMultiple(of: 2) } }   // PolyStage Int→Int — OK
+}
+```
+
+A type-changing stage in `if`-without-else (e.g. `if x { Map { (n: Int) in String(n) } }`) won't compile — wrap it in `if/else` with the alternative branch instead.
+
+`for` loops are **not** supported — Swift's result-builder + opaque-return-type interaction can't infer the array element type when the loop body is a stage. Compose the loop outside, into a single stage:
+
+```swift
+// Instead of `for f in transforms { Map(f) }`:
+let composed = transforms.reduce({ $0 }) { acc, f in { acc(f($0)) } }
+let pipe = Pipe<Int, Never> {
+    From(0..<10)
+    Map(composed)
+}
+```
+
+For branches whose stage shapes differ (e.g. mix Map and Filter), do it outside the builder:
+
+```swift
+// 1. Branch on the whole pipeline.
 let base = Pipe<Int, Never> { From(0..<10) }
 let final = needsDoubling
     ? Pipe<Int, Never> { FromResult(base); Map { (n: Int) in n * 2 } }
     : base
 
-// 3. Build incrementally — each Pipe is itself an AsyncSequence<Result<…>>,
+// 2. Build incrementally — each Pipe is itself an AsyncSequence<Result<…>>,
 //    so re-wrap with `FromResult` to extend it.
 var p = Pipe<Int, Never> { From(0..<10) }
 if needsDoubling {
@@ -239,8 +272,6 @@ if needsDoubling {
     }
 }
 ```
-
-Pattern 1 is preferred when the conditional is local to one stage's behavior. Patterns 2 and 3 are for branching whole pipelines — both rely on `FromResult` to lift one pipeline into another's source.
 
 ## Design
 
