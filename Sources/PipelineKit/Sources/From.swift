@@ -59,8 +59,23 @@ where S.Element: Sendable {
 
 /// Lift an `AsyncSequence` of bare values into a pipeline source (each value becomes `.success`).
 ///
-/// `From(expr)` evaluates `expr` lazily on each iteration; for multi-statement construction
-/// use `Defer { … }` instead.
+/// `From(expr)` evaluates `expr` lazily on each iteration. The autoclosure captures the
+/// *expression*, not a constructor — passing a stored reference to a single-shot
+/// `AsyncSequence` (e.g. an `AsyncStream` you constructed once) will make the second
+/// iteration of the pipe yield empty results without warning, because the underlying
+/// iterator has already been consumed. For non-replayable sources, use `Defer { … }`,
+/// which re-invokes the closure per iteration:
+///
+/// ```swift
+/// // Wrong — second iteration yields empty, no diagnostic.
+/// let stream = AsyncStream<Int> { … }
+/// let pipe = Pipe { From(stream); Map { … } }
+///
+/// // Right — Defer constructs a fresh stream per iteration.
+/// let pipe = Pipe { Defer { AsyncStream<Int> { … } }; Map { … } }
+/// ```
+///
+/// `Array`, `Range`, and other replayable sources work fine with `From`.
 public func From<S: AsyncSequence & Sendable>(
     _ source: @autoclosure @escaping @Sendable () -> S,
 ) -> some PipeSource<S.Element, Never> where S.Element: Sendable, S.Failure == Never {

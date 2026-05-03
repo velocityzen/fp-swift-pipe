@@ -20,7 +20,12 @@ where Inner.Element: Sendable {
         return .erased {
             let source = upstream.upstream()
             return AnyAsyncSequence(
-                AsyncStream<Result<Output, F>> { continuation in
+                // `.unbounded`: AsyncStream has no native backpressure. A single upstream
+                // element whose inner sequence is huge (e.g. a million-element Range) will
+                // queue every inner element before the next upstream element is processed.
+                // The inner-loop cancellation check below at least lets the consumer abort
+                // mid-expansion.
+                AsyncStream<Result<Output, F>>(bufferingPolicy: .unbounded) { continuation in
                     let task = Task {
                         for await element in source {
                             switch element {
@@ -28,6 +33,7 @@ where Inner.Element: Sendable {
                                     continuation.failure(error)
                                 case .success(let value):
                                     for innerValue in transform(value) {
+                                        if Task.isCancelled { break }
                                         continuation.success(innerValue)
                                     }
                             }

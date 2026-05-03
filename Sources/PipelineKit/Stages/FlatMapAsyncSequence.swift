@@ -22,7 +22,10 @@ where Inner.Element: Sendable, Inner.Failure == Never {
         return .erased {
             let source = upstream.upstream()
             return AnyAsyncSequence(
-                AsyncStream<Result<Output, F>> { continuation in
+                // `.unbounded`: see FlatMapSequence for the rationale. The async inner
+                // typically self-throttles (each await yields), but a fast inner with a
+                // stalled consumer still queues without bound.
+                AsyncStream<Result<Output, F>>(bufferingPolicy: .unbounded) { continuation in
                     let task = Task {
                         for await element in source {
                             switch element {
@@ -30,6 +33,7 @@ where Inner.Element: Sendable, Inner.Failure == Never {
                                     continuation.failure(error)
                                 case .success(let value):
                                     for await innerValue in transform(value) {
+                                        if Task.isCancelled { break }
                                         continuation.success(innerValue)
                                     }
                             }

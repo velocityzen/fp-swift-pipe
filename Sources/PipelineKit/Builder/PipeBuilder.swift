@@ -3,6 +3,25 @@
 /// The builder uses `buildPartialBlock` to left-fold heterogeneous steps:
 /// the first step must be a `PipeSource`, and each subsequent step is a
 /// `PipeStage` whose `Input` matches the upstream's `Output`.
+///
+/// ## Extending the builder
+///
+/// Adding a new stage shape (rare) requires touching this file in a predictable matrix:
+/// for each new stage protocol you typically add overloads across these axes:
+///
+/// 1. **First-step identity** (`Pipe`-side, ~6 lines): `buildPartialBlock(first stage:)` —
+///    lets a single stage appear as the body of an `if/else` / `switch case` branch.
+/// 2. **Accumulated × stage** (`Pipe`-side, ~6 lines): combines an existing `Pipe<U, F>`
+///    with the new stage's `attach`.
+/// 3. **Open-pipe variant** (~6 lines, mirrors closed): same combine, but the accumulator
+///    is `OpenPipe<I, U, F>` and stages compose into the open-pipe's `apply` closure.
+/// 4. **Widening** (only if the new stage requires a bound failure channel): a `Never`-input
+///    overload that lifts via `widenFailure(to:)`.
+/// 5. **Optional** (only if the stage is type-preserving): a `next: OptionalStage<St>`
+///    overload that returns `accumulated` unchanged when `optional.stage == nil`.
+///
+/// Roughly 4-6 overloads per new stage protocol. The MARK sections below group by axis;
+/// new overloads belong in the matching section.
 @resultBuilder
 public enum PipeBuilder {
     // MARK: - First step (the source)

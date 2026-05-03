@@ -17,7 +17,10 @@
 private func asyncStream<T: Sendable>(
     _ body: @escaping @Sendable (AsyncStream<T>.Continuation) async -> Void,
 ) -> AsyncStream<T> {
-    AsyncStream<T> { continuation in
+    // `.unbounded` is explicit (not the default fallback) — `AsyncStream` doesn't natively
+    // backpressure. In practice the body's loop yields one result at a time and only
+    // proceeds after `await group.next()`, so the queue holds at most `concurrency` items.
+    AsyncStream<T>(bufferingPolicy: .unbounded) { continuation in
         let task = Task {
             await body(continuation)
             continuation.finish()
@@ -122,6 +125,14 @@ where
         // Drain head, refill back, preserving source order. Cancellation is checked both
         // before awaiting the head (so a non-cooperative head doesn't strand pending work)
         // and after, before refilling.
+        //
+        // Limitation: if cancellation arrives *while* `await head.value` is in progress,
+        // the head's transform is still awaited to completion before we observe the
+        // cancellation and tear down the window. Cooperative heads (Task.sleep, networking)
+        // unblock immediately via structured concurrency; non-cooperative heads (CPU loops
+        // without `Task.isCancelled` checks) hold the cancel-to-cleanup latency at their
+        // full transform time. Racing the head against an explicit cancellation handle
+        // would close this gap but adds machinery; current tests assume cooperative heads.
         while !window.isEmpty {
             if Task.isCancelled {
                 for pending in window { pending.cancel() }

@@ -3,10 +3,12 @@ import FP
 import Synchronization
 @testable import PipelineKit
 
-// Informational benchmarks. These run as part of the regular test suite and
-// validate behavior at scale; timings are printed for inspection but not asserted
-// against fixed thresholds (which would be flaky across hardware). To skip them
-// during fast iteration, filter with `swift test --skip Benchmark`.
+// Informational benchmarks. These run as part of the regular test suite and validate
+// behavior at scale. Timings are printed for inspection AND asserted against conservative
+// wall-clock upper bounds (3-5× the observed local time on an M-class Mac) so that real
+// regressions are caught while normal CI variance is tolerated. To skip them during fast
+// iteration, filter with `swift test --skip Benchmark`. If you see a benchmark failing on
+// CI but passing locally, raise the bound — don't remove the assertion.
 
 private enum E: Error, Equatable, Sendable { case bad }
 
@@ -34,6 +36,8 @@ private enum E: Error, Equatable, Sendable { case bad }
     print("[bench] long-chain 10K → \(collected) elements in \(elapsed)")
     #expect(collected > 0)
     if case .failure = result { Issue.record("expected success") }
+    // Local M-class observation: ~25ms. Bound at 250ms for CI variance (~10×).
+    #expect(elapsed < .milliseconds(250), "10-stage chain over 10K elements took \(elapsed)")
 }
 
 @Test func benchmarkShortCircuitAtScaleSkipsDownstreamWork() async {
@@ -59,6 +63,11 @@ private enum E: Error, Equatable, Sendable { case bad }
     print("[bench] short-circuit 100K → \(elapsed), Map closure hits = \(mapHits.withLock { $0 })")
     #expect(result == .failure(.bad))
     #expect(mapHits.withLock { $0 } == 0)
+    // Short-circuit on first element should be near-instant. Local: ~1ms. Bound at 100ms.
+    #expect(
+        elapsed < .milliseconds(100),
+        "short-circuit on first failure shouldn't iterate the source: \(elapsed)",
+    )
 }
 
 @Test func benchmarkAsyncMapKeepOrderParallelizesLatentWork() async {
@@ -122,4 +131,6 @@ private enum E: Error, Equatable, Sendable { case bad }
     // Re-iteration should be O(1) per pass — max should not be wildly larger
     // than min. Allow 50× headroom for cold-cache effects on the first pass.
     #expect(max < min * 50, "re-iteration cost should be roughly constant")
+    // Total budget for 50 iterations of a 1K-element 4-stage pipe. Local: ~50ms. Bound at 1s.
+    #expect(total < .seconds(1), "50× re-iteration over 1K took \(total)")
 }

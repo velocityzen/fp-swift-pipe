@@ -19,7 +19,12 @@ where S.Element: Sendable, S.Failure == Never {
         let make = self.make
         return .erased {
             AnyAsyncSequence(
-                AsyncStream<Result<S.Element, Never>> { continuation in
+                // `.unbounded` is explicit. AsyncStream has no native backpressure; if the
+                // produced sequence outpaces a stalled consumer, the queue grows. For
+                // typical async sources (cursors, network streams) production is naturally
+                // throttled by the upstream's own latency.
+                AsyncStream<Result<S.Element, Never>>(bufferingPolicy: .unbounded) {
+                    continuation in
                     let task = Task {
                         let seq = await make()
                         for await element in seq {
@@ -52,7 +57,11 @@ where S.Element: Sendable {
         let make = self.make
         return .erased {
             AnyAsyncSequence(
-                AsyncStream<Result<S.Element, Never>> { continuation in
+                // `.unbounded` is explicit. The sync sequence is drained as fast as the
+                // task can run; if the consumer stalls and the sequence is large, the
+                // queue grows without bound.
+                AsyncStream<Result<S.Element, Never>>(bufferingPolicy: .unbounded) {
+                    continuation in
                     let task = Task {
                         let seq = await make()
                         for element in seq {
@@ -88,7 +97,8 @@ where S.Element == Result<V, E>, S.Failure == Never {
         let make = self.make
         return .erased {
             AnyAsyncSequence(
-                AsyncStream<Result<V, E>> { continuation in
+                // `.unbounded` is explicit; see sibling sources for the backpressure note.
+                AsyncStream<Result<V, E>>(bufferingPolicy: .unbounded) { continuation in
                     let task = Task {
                         let seq = await make()
                         for await element in seq {

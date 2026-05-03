@@ -147,6 +147,43 @@ func cancellationDoesNotBlockConsumerOnPendingInFlight() async {
     )
 }
 
+// MARK: - Non-cooperative transforms (pins README's documented limitation)
+//
+// A transform that does no cancellation-aware awaits cannot be stopped mid-flight by
+// `Task.cancel()` — only cooperative checks (`Task.isCancelled` / `try Task.checkCancellation()`)
+// or cancellation-throwing operations (`Task.sleep`, networking) can stop it. This test
+// pins that behavior so the README's caveat has a regression check: if someone ever changes
+// the helpers to forcibly preempt non-cooperative work, this test will tell them.
+
+@Test
+func nonCooperativeTransformsRunToCompletion() async {
+    let completed = Mutex<Int>(0)
+    let pipe = Pipe<Int, Never> {
+        From(0..<8)
+        AsyncMap(concurrency: 4) { (n: Int) async -> Int in
+            // Tight CPU loop, no awaits, no isCancelled check. Cannot be cancelled.
+            var acc = 0
+            for i in 0..<200_000 { acc &+= i }
+            _ = acc
+            completed.withLock { $0 += 1 }
+            return n
+        }
+    }
+
+    let task = Task {
+        for await _ in pipe { break }  // bail immediately on first emission
+    }
+    _ = await task.value
+
+    // Brief grace for the in-flight tasks to finish their loops, then check that *all*
+    // primed tasks ran to completion despite the consumer giving up. If this ever asserts
+    // less than concurrency, our helpers acquired forced preemption (and the README needs
+    // an update).
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    let total = completed.withLock { $0 }
+    #expect(total >= 4, "expected non-cooperative tasks to finish; got \(total)")
+}
+
 // MARK: - Iterator deinit teardown
 
 @Test

@@ -1,3 +1,20 @@
+// MARK: - Sinks
+//
+// Terminal operations that drive a `Pipe` to completion (or to a stopping condition) and
+// return a final result. Sinks are the only place a pipeline actually executes: building
+// stages just describes the chain, iterating runs it. Pick a sink based on what you want
+// to do with the elements:
+//
+// - `toResult()`     — collect all successes; stop on first failure (all-or-nothing).
+// - `toArray()`      — collect every element including failures (no short-circuit).
+// - `reduce(_:_:)`   — fold to a single value; stop on first failure.
+// - `first()`        — the first element (success or failure).
+// - `firstSuccess()` — the first success (skipping leading failures).
+// - `firstError()`   — the first failure (skipping leading successes).
+//
+// For custom termination logic use `for await x in pipe { … }` directly and `break` when
+// you're done — the iterator deinit propagates cancellation upstream.
+
 public extension Pipe {
     /// Collect every success into an array, all-or-nothing.
     /// On the first `.failure`, iteration stops and that failure is returned.
