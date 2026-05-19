@@ -27,7 +27,7 @@ func asyncFlatMapConcurrentEmitsUnordered() async {
     }
 
     let elements = await pipe.toArray()
-    let values = elements.compactMap { try? $0.get() }
+    let values = elements.successes()
     #expect(Set(values) == Set([1, 2, 3, 4, 5]))
     #expect(values.first == 1)  // smallest sleep completes first
 }
