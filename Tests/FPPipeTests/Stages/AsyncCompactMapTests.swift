@@ -28,9 +28,10 @@ func asyncCompactMapConcurrentRetainsParsedValues() async {
 
 @Test
 func asyncCompactMapConcurrentParallelizesWork() async {
-    // 10 elements × 20ms each. Sequential bound: 200ms. Concurrent: ~20ms.
-    let count = 10
-    let perElementMs: UInt64 = 20
+    // 5 elements × 100ms each. Sequential bound: 500ms. Concurrent: ~100ms.
+    // Per-element work dominates scheduler overhead on shared CI runners.
+    let count = 5
+    let perElementMs: UInt64 = 100
     let pipe = Pipe<Int, Never> {
         From(0..<count)
         AsyncCompactMap(concurrency: count) { (n: Int) async -> Int? in
@@ -47,7 +48,6 @@ func asyncCompactMapConcurrentParallelizesWork() async {
         Double(elapsed.components.seconds) * 1_000
         + Double(elapsed.components.attoseconds) / 1e15
 
-    // CI runners (often 2 vCPUs, oversubscribed) can't reliably hit 2×; require ≥10%.
     let sequentialMs = Double(count) * Double(perElementMs)
-    #expect(observedMs < sequentialMs * 9 / 10)
+    #expect(observedMs < sequentialMs / 2)
 }

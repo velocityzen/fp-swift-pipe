@@ -71,11 +71,12 @@ private enum E: Error, Equatable, Sendable { case bad }
 }
 
 @Test func benchmarkAsyncMapKeepOrderParallelizesLatentWork() async {
-    // 20 elements, each transform takes ~10ms. Sequential would be ~200ms;
-    // parallel keep-order should be bounded by the slowest element (~10ms +
-    // task scheduling overhead).
-    let count = 20
-    let perElementSleepNs: UInt64 = 10_000_000  // 10ms
+    // 5 elements, each transform takes ~100ms. Sequential would be ~500ms;
+    // parallel keep-order should be bounded by the slowest element (~100ms +
+    // task scheduling overhead). Per-element work is large enough to dominate
+    // scheduler overhead on shared CI runners.
+    let count = 5
+    let perElementSleepNs: UInt64 = 100_000_000  // 100ms
 
     let pipe = Pipe<Int, Never> {
         From(0..<count)
@@ -91,20 +92,16 @@ private enum E: Error, Equatable, Sendable { case bad }
     let elapsed = start.duration(to: clock.now)
 
     let values = result.getOrElse([])
-    print("[bench] keep-order 20×10ms → \(elapsed) (sequential would be ~\(count * 10)ms)")
+    print("[bench] keep-order 5×100ms → \(elapsed) (sequential would be ~\(count * 100)ms)")
     #expect(values == Array(0..<count))
 
-    // CI runners (often 2 vCPUs, oversubscribed) can't reliably demonstrate 2×
-    // speedup on 20 short sleeps. Require ≥10% — weak as an assertion but enough
-    // to catch full serialization regressions; the printed timing above is the
-    // signal for noticing softer regressions.
     let sequentialBoundNs = UInt64(count) * perElementSleepNs
     let observedNs =
         UInt64(elapsed.components.attoseconds / 1_000_000_000) + UInt64(elapsed.components.seconds)
         * 1_000_000_000
     #expect(
-        observedNs < sequentialBoundNs * 9 / 10,
-        "expected parallel keep-order to be at least 10% faster than sequential"
+        observedNs < sequentialBoundNs / 2,
+        "expected parallel keep-order to be at least 2× faster than sequential"
     )
 }
 
