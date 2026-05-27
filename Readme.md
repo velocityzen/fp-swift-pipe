@@ -202,6 +202,12 @@ Pipe<Item, AppError> {
 
 The same pattern applies to throwing `AsyncSequence`s: wrap them in a `Result`-bearing producer first, then feed via `FromResult`. The pipeline's failure channel stays typed and intentional, every `throws` is converted at exactly one place, and the typed-throws boundary is visible in the diff rather than hidden in a stage adapter.
 
+Inside async stage closures, fp-swift's `|>` operator has async overloads, so you can compose async transforms point-free without an extra `await` dance:
+
+```swift
+AsyncMap { url in await url |> fetchData |> decodeJSON }
+```
+
 ## Concurrency
 
 Every `Async*` stage takes a `concurrency: Int = 1` parameter. With the default of 1 the stage runs strictly sequentially — element N's closure waits for N−1 to finish. With `concurrency > 1`, up to N closures run in parallel:
