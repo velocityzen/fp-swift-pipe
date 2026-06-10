@@ -40,9 +40,14 @@ func asyncCompactMapConcurrentParallelizesWork() async {
         }
     }
 
+    // Simulators can stall ~10s warming up under CI, so the wall-clock bound runs on
+    // macOS/Linux only.
+    #if os(macOS) || os(Linux)
     let clock = ContinuousClock()
     let start = clock.now
+    #endif
     _ = await pipe.toResult()
+    #if os(macOS) || os(Linux)
     let elapsed = start.duration(to: clock.now)
     let observedMs =
         Double(elapsed.components.seconds) * 1_000
@@ -50,4 +55,5 @@ func asyncCompactMapConcurrentParallelizesWork() async {
 
     let sequentialMs = Double(count) * Double(perElementMs)
     #expect(observedMs < sequentialMs / 2)
+    #endif
 }

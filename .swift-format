@@ -1,4 +1,5 @@
 {
+  "indentConditionalCompilationBlocks": false,
   "indentSwitchCaseLabels": true,
   "indentation": {
     "spaces": 4

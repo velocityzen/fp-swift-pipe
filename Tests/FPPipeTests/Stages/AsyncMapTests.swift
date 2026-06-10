@@ -35,8 +35,12 @@ func asyncMapConcurrentEmitsUnordered() async {
 
     // Same elements, possibly different order.
     #expect(Set(values) == Set([1, 2, 3, 4, 5]))
-    // Smaller sleeps complete first → first emitted is the smallest.
+    // Smaller sleeps complete first → first emitted is the smallest. Completion order
+    // is scheduler-timing dependent and simulators can stall under CI, so assert it on
+    // macOS/Linux only.
+    #if os(macOS) || os(Linux)
     #expect(values.first == 1)
+    #endif
 }
 
 @Test
@@ -55,9 +59,14 @@ func asyncMapConcurrentParallelizesWork() async {
         }
     }
 
+    // Simulators can stall ~10s warming up under CI, so the wall-clock bound runs on
+    // macOS/Linux only.
+    #if os(macOS) || os(Linux)
     let clock = ContinuousClock()
     let start = clock.now
+    #endif
     _ = await pipe.toResult()
+    #if os(macOS) || os(Linux)
     let elapsed = start.duration(to: clock.now)
     let observedMs =
         Double(elapsed.components.seconds) * 1_000
@@ -65,4 +74,5 @@ func asyncMapConcurrentParallelizesWork() async {
 
     let sequentialMs = Double(count) * Double(perElementMs)
     #expect(observedMs < sequentialMs / 2)
+    #endif
 }

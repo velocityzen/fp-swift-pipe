@@ -1,5 +1,7 @@
 # FPPipe
 
+[![Swift](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fvelocityzen%2Ffp-swift-pipe%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/velocityzen/fp-swift-pipe)
+[![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fvelocityzen%2Ffp-swift-pipe%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/velocityzen/fp-swift-pipe)
 [![Documentation](https://img.shields.io/badge/documentation-DocC-purple)](https://swiftpackageindex.com/velocityzen/fp-swift-pipe/documentation/fppipe)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -323,8 +325,10 @@ The result builder has one `buildPartialBlock` overload per shape, plus a `Never
 ## Requirements
 
 - Swift 6.2+, Swift language mode 6
-- macOS 15+ / iOS 18+ (for `Synchronization.Mutex` and fp-swift's ordered concurrency helpers)
+- macOS 15+ / iOS 18+ / tvOS 18+ / watchOS 11+ / visionOS 2+ / Linux (for `Synchronization.Mutex` and fp-swift's ordered concurrency helpers)
 - Strict concurrency: clean
+
+Every platform is exercised in CI: macOS 15 and 26, Ubuntu Linux, and the iOS, tvOS, watchOS, and visionOS simulators.
 
 ## License
 
