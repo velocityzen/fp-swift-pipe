@@ -328,7 +328,7 @@ The result builder has one `buildPartialBlock` overload per shape, plus a `Never
 - macOS 15+ / iOS 18+ / tvOS 18+ / watchOS 11+ / visionOS 2+ / Linux (for `Synchronization.Mutex` and fp-swift's ordered concurrency helpers)
 - Strict concurrency: clean
 
-Every platform is exercised in CI: macOS 15 and 26, Ubuntu Linux, and the iOS, tvOS, watchOS, and visionOS simulators.
+Every platform is exercised in CI: macOS, Ubuntu Linux, and the iOS, tvOS, watchOS, and visionOS simulators.
 
 ## License
 

@@ -140,15 +140,18 @@ struct PipeBenchmarks {
 
         let total = samples.reduce(.zero, +)
         let avg = total / samples.count
+        let median = samples.sorted()[samples.count / 2]
         let min = samples.min() ?? .zero
         let max = samples.max() ?? .zero
 
-        print("[bench] re-iter 50× over 1K → avg \(avg), min \(min), max \(max)")
+        print("[bench] re-iter 50× over 1K → avg \(avg), median \(median), min \(min), max \(max)")
 
-        // Re-iteration should be O(1) per pass — max should not be wildly larger
-        // than min. Allow 50× headroom for cold-cache effects on the first pass.
+        // Re-iteration should be O(1) per pass — the typical pass should stay close to
+        // the fastest. The median is asserted rather than the max because a shared CI
+        // runner can preempt a single iteration for 100ms+ (observed 119× min), which
+        // says nothing about re-iteration cost; systematic growth still moves the median.
         #if os(macOS) || os(Linux)
-        #expect(max < min * 50, "re-iteration cost should be roughly constant")
+        #expect(median < min * 50, "re-iteration cost should be roughly constant")
         // Total budget for 50 iterations of a 1K-element 4-stage pipe. Local: ~50ms. Bound at 1s.
         #expect(total < .seconds(1), "50× re-iteration over 1K took \(total)")
         #endif

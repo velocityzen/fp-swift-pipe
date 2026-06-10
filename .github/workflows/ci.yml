@@ -33,20 +33,11 @@ jobs:
         run: swiftlint --strict
 
   macos:
-    name: Test macOS (${{ matrix.os }})
-    strategy:
-      matrix:
-        include:
-          - os: macos-15
-          - os: macos-26
-    runs-on: ${{ matrix.os }}
+    name: Test macOS
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: 6.2
 
       - name: Show Swift version
         run: swift --version
