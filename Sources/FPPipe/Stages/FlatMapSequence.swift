@@ -49,6 +49,12 @@ where Inner.Element: Sendable {
 }
 
 /// DSL: `FlatMapSequence { (n: Int) in 0..<n }`.
+///
+/// Each inner sequence is consumed eagerly and buffered without bound: a single upstream
+/// element that expands into a huge inner sequence (e.g. a million-element `Range`) queues
+/// every inner element in memory ahead of the consumer. Breaking out of iteration cancels
+/// the expansion promptly; a consumer that keeps iterating holds the whole backlog. Keep
+/// per-element expansions modest.
 public func FlatMapSequence<Input: Sendable, Inner: Sequence & Sendable>(
     _ transform: @escaping @Sendable (Input) -> Inner,
 ) -> some PipePolyStage<Input, Inner.Element> where Inner.Element: Sendable {

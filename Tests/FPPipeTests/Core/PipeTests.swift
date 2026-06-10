@@ -3,6 +3,8 @@ import Synchronization
 import Testing
 
 private enum E: Error, Equatable { case bad }
+private enum NetError: Error, Equatable { case timeout }
+private enum AppError: Error, Equatable { case network }
 
 // MARK: - Re-iterability
 
@@ -107,6 +109,34 @@ func failuresShortCircuitSuccessSideClosures() async {
     // Map's closure ran for the two successes only — never for the failure.
     #expect(mapHits.withLock { $0 } == 2)
     #expect(observed == [.success(1), .failure(.bad), .success(3)])
+}
+
+// MARK: - Error-channel composition
+
+/// A failure introduced mid-pipeline is re-typed by `MapError`, observed by `TapError`,
+/// and selectively recovered by `FlatMapError` — all per element, successes untouched.
+@Test
+func errorFlowsThroughRetypeObserveRecoverChain() async {
+    let observed = Mutex<Int>(0)
+    let pipe = Pipe<Int, AppError> {
+        From([1, 2, 3, 4])
+        FlatMap { (n: Int) -> Result<Int, NetError> in
+            n.isMultiple(of: 2) ? .failure(.timeout) : .success(n)
+        }
+        MapError { (_: NetError) in AppError.network }
+        TapError { (_: AppError) in observed.withLock { $0 += 1 } }
+        FlatMapError { (e: AppError) -> Result<Int, AppError> in
+            e == .network ? .success(0) : .failure(e)
+        }
+    }
+
+    var seen: [Result<Int, AppError>] = []
+    for await x in pipe {
+        seen.append(x)
+    }
+
+    #expect(seen == [.success(1), .success(0), .success(3), .success(0)])
+    #expect(observed.withLock { $0 } == 2)
 }
 
 // MARK: - Associativity (composition is associative by construction)

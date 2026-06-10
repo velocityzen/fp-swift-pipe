@@ -97,6 +97,8 @@ Key shapes used:
 | `TapError` / `AsyncTapError` | `(F) → Void` / `(F) async → Void` | Observe failures. |
 | `Match` / `AsyncMatch` | `onSuccess: (A) → R, onFailure: (F) → R` (and async) | Fold both channels into a single `R`; output `Failure == Never`. |
 
+`FlatMapSequence` and `FlatMapAsyncSequence` expand eagerly and buffer without bound: a single element that fans out into a huge inner sequence (a million-element `Range`, say) queues every inner element in memory ahead of the consumer. Breaking out of iteration tears the expansion down promptly — but a consumer that keeps iterating holds the whole backlog. Keep per-element expansions modest.
+
 ### Sources
 
 | Source | Notes |

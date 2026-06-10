@@ -35,6 +35,18 @@ func fromResultLiftsResultBearingSequenceDirectly() async {
 }
 
 @Test
+func fromEmptySequenceProducesEmptyOnEveryIteration() async {
+    let pipe = Pipe<Int, Never> {
+        From([Int]())
+        Map { (n: Int) in n * 10 }
+    }
+    let first = await pipe.toResult()
+    let second = await pipe.toResult()
+    #expect(first == .success([]))
+    #expect(second == .success([]))
+}
+
+@Test
 func deferProducesFreshSourcePerIteration() async {
     let counter = Mutex<Int>(0)
     let pipe = Pipe<Int, Never> {

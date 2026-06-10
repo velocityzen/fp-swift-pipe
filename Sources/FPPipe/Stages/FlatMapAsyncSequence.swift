@@ -49,6 +49,10 @@ where Inner.Element: Sendable, Inner.Failure == Never {
 }
 
 /// DSL: `FlatMapAsyncSequence { (url: URL) in fetchPages(for: url) }`.
+///
+/// Inner elements are buffered without bound. An async inner sequence usually self-throttles
+/// (each element is awaited), but a fast inner feeding a slow consumer still queues in memory.
+/// Breaking out of iteration cancels the expansion promptly.
 public func FlatMapAsyncSequence<Input: Sendable, Inner: AsyncSequence & Sendable>(
     _ transform: @escaping @Sendable (Input) -> Inner,
 ) -> some PipePolyStage<Input, Inner.Element>

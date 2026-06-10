@@ -43,3 +43,20 @@ func flatMapErrorOnSuccessPathPassesThrough() async {
     let result = await pipe.toResult()
     #expect(result == .success([101, 102, 103]))
 }
+
+@Test
+func reFailedErrorIsCaughtByLaterRecoveryStage() async {
+    // The first recovery re-fails with a new error type; a second recovery downstream
+    // collapses it — errors keep flowing through the channel between recovery stages.
+    let pipe = Pipe<Int, Never> {
+        From([1, 2, 3])
+        FlatMap { (n: Int) -> Result<Int, NetError> in
+            n == 2 ? .failure(.timeout) : .success(n)
+        }
+        FlatMapError { (_: NetError) -> Result<Int, AppError> in .failure(.wrapped) }
+        GetOrElse { (_: AppError) -> Int in -1 }
+    }
+
+    let result = await pipe.toResult()
+    #expect(result == .success([1, -1, 3]))
+}
