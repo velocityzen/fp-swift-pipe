@@ -68,10 +68,11 @@ where Inner.Element: Sendable, Inner.Failure == Never {
 ///
 /// Expansion is backpressured: at most `bufferSize` inner elements are buffered ahead
 /// of the consumer; past that the expansion suspends until the consumer catches up.
-/// Raise `bufferSize` to let the expansion read further ahead of a bursty consumer.
-/// Breaking out of iteration cancels the expansion promptly, parked or not.
+/// With the default of 1 the expansion stays in lockstep with the consumer; raise
+/// `bufferSize` to let it read further ahead of a bursty consumer. Breaking out of
+/// iteration cancels the expansion promptly, parked or not.
 public func FlatMapAsyncSequence<Input: Sendable, Inner: AsyncSequence & Sendable>(
-    bufferSize: Int = 16,
+    bufferSize: Int = 1,
     _ transform: @escaping @Sendable (Input) -> Inner,
 ) -> some PipePolyStage<Input, Inner.Element>
 where Inner.Element: Sendable, Inner.Failure == Never {

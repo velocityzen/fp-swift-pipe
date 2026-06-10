@@ -31,6 +31,7 @@ swiftlint --strict
 ## Design rules
 
 - **Result-only.** Errors travel in the `Result.failure` channel; `throws` never crosses a stage boundary. No `TryMap`-style adapters — throwing code is bridged at call sites (see the Readme section "Working with throwing code").
+- **Sequential by default.** Any knob that lets work run ahead of the consumer (`concurrency:`, `bufferSize:`) defaults to 1; parallelism and prefetch are explicit opt-ins at the call site.
 - **Strict concurrency clean.** Everything public is `Sendable`, stage closures are `@Sendable`, and the package must build warning-free in Swift 6 language mode on macOS and Linux.
 - **Lazy and re-iterable.** Pipes store `@Sendable` builders and reconstruct the chain per iteration; a stage must not hold shared mutable state or assume it is iterated once.
 - **Formatting is owned by `swift-format`** (`.swift-format`); SwiftLint covers bug-catching rules (`.swiftlint.yml`). Don't hand-fight either — CI runs both strict.

@@ -67,11 +67,12 @@ where Inner.Element: Sendable {
 ///
 /// Expansion is backpressured: at most `bufferSize` inner elements are buffered ahead
 /// of the consumer; past that the expansion suspends until the consumer catches up, so
-/// a million-element inner `Range` never sits in memory at once. Raise `bufferSize` to
-/// let the expansion read further ahead of a bursty consumer. Breaking out of iteration
-/// cancels the expansion promptly, parked or not.
+/// a million-element inner `Range` never sits in memory at once. With the default of 1
+/// the expansion stays in lockstep with the consumer; raise `bufferSize` to let it read
+/// further ahead of a bursty consumer. Breaking out of iteration cancels the expansion
+/// promptly, parked or not.
 public func FlatMapSequence<Input: Sendable, Inner: Sequence & Sendable>(
-    bufferSize: Int = 16,
+    bufferSize: Int = 1,
     _ transform: @escaping @Sendable (Input) -> Inner,
 ) -> some PipePolyStage<Input, Inner.Element> where Inner.Element: Sendable {
     FlatMapSequenceStage(transform, bufferSize: bufferSize)

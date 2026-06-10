@@ -97,7 +97,7 @@ Key shapes used:
 | `TapError` / `AsyncTapError` | `(F) → Void` / `(F) async → Void` | Observe failures. |
 | `Match` / `AsyncMatch` | `onSuccess: (A) → R, onFailure: (F) → R` (and async) | Fold both channels into a single `R`; output `Failure == Never`. |
 
-`FlatMapSequence` and `FlatMapAsyncSequence` apply backpressure: the expansion runs ahead of the consumer by at most `bufferSize` elements (default 16), then suspends until the consumer catches up — a single element fanning out into a million-element `Range` never sits in memory at once. Raise `bufferSize` to let the expansion read further ahead of a bursty consumer. Breaking out of iteration tears the expansion down promptly, parked or not.
+`FlatMapSequence` and `FlatMapAsyncSequence` apply backpressure: the expansion runs ahead of the consumer by at most `bufferSize` elements, then suspends until the consumer catches up — a single element fanning out into a million-element `Range` never sits in memory at once. With the default of 1 the expansion stays in lockstep with the consumer; raise `bufferSize` to let it read further ahead of a bursty consumer. Breaking out of iteration tears the expansion down promptly, parked or not.
 
 ### Sources
 
@@ -211,6 +211,8 @@ AsyncMap { url in await url |> fetchData |> decodeJSON }
 ```
 
 ## Concurrency
+
+FPPipe is **sequential by default**: every knob that lets work run ahead of the consumer defaults to 1 — `concurrency:` on the `Async*` stages (strictly sequential) and `bufferSize:` on the fan-out stages (at most one element ahead). Parallelism and prefetch are always explicit opt-ins at the call site.
 
 Every `Async*` stage takes a `concurrency: Int = 1` parameter. With the default of 1 the stage runs strictly sequentially — element N's closure waits for N−1 to finish. With `concurrency > 1`, up to N closures run in parallel:
 
