@@ -87,8 +87,8 @@ Key shapes used:
 | `Filter` / `AsyncFilter` | `(A) → Bool` / `(A) async → Bool` | Keep matching successes; failures pass through. |
 | `CompactMap` / `AsyncCompactMap` | `(A) → B?` / `(A) async → B?` | Map and drop `nil`s. |
 | `Take` / `Drop` | `Int` | Limit / skip leading elements. |
-| `FlatMapSequence` | `(A) → Sequence<B>` | One-to-many fan-out, sync inner. |
-| `FlatMapAsyncSequence` | `(A) → AsyncSequence<B>` | One-to-many fan-out, async inner (non-throwing). |
+| `FlatMapSequence` | `(A) → Sequence<B>`, `bufferSize:` | One-to-many fan-out, sync inner. |
+| `FlatMapAsyncSequence` | `(A) → AsyncSequence<B>`, `bufferSize:` | One-to-many fan-out, async inner (non-throwing). |
 | `MapError` | `(F1) → F2` | Transform the failure channel. |
 | `Alt` / `AsyncAlt` | `() → Result<A, F>` / `() async → Result<A, F>` | Replace failures with an alternative `Result` that doesn't see the error. |
 | `FlatMapError` / `AsyncFlatMapError` | `(F1) → Result<A, F2>` / `(F1) async → Result<A, F2>` | Recover or re-fail with a possibly different error type. |
@@ -97,7 +97,7 @@ Key shapes used:
 | `TapError` / `AsyncTapError` | `(F) → Void` / `(F) async → Void` | Observe failures. |
 | `Match` / `AsyncMatch` | `onSuccess: (A) → R, onFailure: (F) → R` (and async) | Fold both channels into a single `R`; output `Failure == Never`. |
 
-`FlatMapSequence` and `FlatMapAsyncSequence` expand eagerly and buffer without bound: a single element that fans out into a huge inner sequence (a million-element `Range`, say) queues every inner element in memory ahead of the consumer. Breaking out of iteration tears the expansion down promptly — but a consumer that keeps iterating holds the whole backlog. Keep per-element expansions modest.
+`FlatMapSequence` and `FlatMapAsyncSequence` apply backpressure: the expansion runs ahead of the consumer by at most `bufferSize` elements (default 16), then suspends until the consumer catches up — a single element fanning out into a million-element `Range` never sits in memory at once. Raise `bufferSize` to let the expansion read further ahead of a bursty consumer. Breaking out of iteration tears the expansion down promptly, parked or not.
 
 ### Sources
 
