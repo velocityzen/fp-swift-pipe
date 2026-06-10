@@ -13,7 +13,7 @@ struct MapErrorStage<
 
     func attach<V: Sendable>(_ upstream: Pipe<V, InputFailure>) -> Pipe<V, OutputFailure> {
         let transform = self.transform
-        return .erased { AnyAsyncSequence(upstream.upstream().mapFailure(transform)) }
+        return .erased { AnyAsyncSequence(upstream.upstream().mapError(transform)) }
     }
 }
 

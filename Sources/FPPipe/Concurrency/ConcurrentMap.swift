@@ -1,10 +1,10 @@
 /// Internal helpers for bounded-concurrency, async element mapping over an
-/// `AsyncSequence`. Used by every `Async*` stage when `concurrency > 1`.
+/// `AsyncSequence`. Used by the unordered `Async*` stages when `concurrency > 1`.
+/// (The `KeepOrder` stages delegate to fp-swift's `mapAsyncKeepOrder` /
+/// `flatMapAsyncKeepOrder` instead.)
 ///
 /// - `mapAsyncUnordered`        — yields each result the moment its task finishes.
 /// - `compactMapAsyncUnordered` — same, with `nil` results dropped (thin layer over the above).
-/// - `mapAsyncKeepOrderBounded` — yields in strict source order, draining the head
-///                                of a sliding window of pending tasks.
 ///
 /// Cancellation: each helper proactively cancels in-flight transforms when the outer Task
 /// is cancelled. Cooperative transforms (those that await something cancellation-aware)
@@ -91,68 +91,6 @@ where
             if Task.isCancelled { break }
             if let value = result {
                 continuation.yield(value)
-            }
-        }
-    }
-}
-
-func mapAsyncKeepOrderBounded<Source, T>(
-    _ source: Source,
-    concurrency: Int,
-    _ transform: @escaping @Sendable (Source.Element) async -> T,
-) -> AsyncStream<T>
-where
-    Source: AsyncSequence & Sendable,
-    Source.Element: Sendable,
-    Source.Failure == Never,
-    T: Sendable
-{
-    asyncStream { continuation in
-        var iter = source.makeAsyncIterator()
-        var window: [Task<T, Never>] = []
-
-        // Prime the sliding window with up to N tasks.
-        for _ in 0..<concurrency {
-            if Task.isCancelled { break }
-            guard let element = try? await iter.next() else {
-                break
-            }
-            window.append(
-                Task { await transform(element) }
-            )
-        }
-
-        // Drain head, refill back, preserving source order. Cancellation is checked both
-        // before awaiting the head (so a non-cooperative head doesn't strand pending work)
-        // and after, before refilling.
-        //
-        // Limitation: if cancellation arrives *while* `await head.value` is in progress,
-        // the head's transform is still awaited to completion before we observe the
-        // cancellation and tear down the window. Cooperative heads (Task.sleep, networking)
-        // unblock immediately via structured concurrency; non-cooperative heads (CPU loops
-        // without `Task.isCancelled` checks) hold the cancel-to-cleanup latency at their
-        // full transform time. Racing the head against an explicit cancellation handle
-        // would close this gap but adds machinery; current tests assume cooperative heads.
-        while !window.isEmpty {
-            if Task.isCancelled {
-                for pending in window { pending.cancel() }
-                window.removeAll()
-                break
-            }
-
-            let head = window.removeFirst()
-            continuation.yield(await head.value)
-
-            if Task.isCancelled {
-                for pending in window { pending.cancel() }
-                window.removeAll()
-                break
-            }
-
-            if let element = try? await iter.next() {
-                window.append(
-                    Task { await transform(element) }
-                )
             }
         }
     }

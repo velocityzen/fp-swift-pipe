@@ -31,10 +31,7 @@ struct AsyncFlatMapKeepOrderStage<Input: Sendable, Output: Sendable, Failure: Er
                 return AnyAsyncSequence(source.flatMapAsync(transform))
             }
             return AnyAsyncSequence(
-                mapAsyncKeepOrderBounded(source, concurrency: concurrency) {
-                    (element: Result<Input, Failure>) async -> Result<Output, Failure> in
-                    await element.flatMapAsync(transform)
-                },
+                source.flatMapAsyncKeepOrder(concurrency: concurrency, transform),
             )
         }
     }

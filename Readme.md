@@ -197,7 +197,7 @@ Pipe<Item, AppError> {
     From(urls)
     AsyncFlatMap { url in
         await Result.fromAsync { try await fetch(url) }
-            .mapFailureAsync(AppError.network)
+            .mapErrorAsync(AppError.network)
     }
 }
 ```
@@ -323,7 +323,7 @@ The result builder has one `buildPartialBlock` overload per shape, plus a `Never
 ## Requirements
 
 - Swift 6.2+, Swift language mode 6
-- macOS 15+ / iOS 18+ (inherited from `fp-swift`)
+- macOS 15+ / iOS 18+ (for `Synchronization.Mutex` and fp-swift's ordered concurrency helpers)
 - Strict concurrency: clean
 
 ## License

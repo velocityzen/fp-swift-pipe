@@ -23,10 +23,7 @@ struct AsyncMapKeepOrderStage<Input: Sendable, Output: Sendable>: PipePolyStage 
                 return AnyAsyncSequence(source.mapAsync(transform))
             }
             return AnyAsyncSequence(
-                mapAsyncKeepOrderBounded(source, concurrency: concurrency) {
-                    (element: Result<Input, F>) async -> Result<Output, F> in
-                    await element.mapAsync(transform)
-                },
+                source.mapAsyncKeepOrder(concurrency: concurrency, transform),
             )
         }
     }
