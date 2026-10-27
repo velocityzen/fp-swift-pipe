@@ -27,9 +27,8 @@ public struct AnyAsyncSequence<Element: Sendable>: AsyncSequence, Sendable {
         init<S: AsyncSequence>(_ base: S) where S.Element == Element, S.Failure == Never {
             var iterator = base.makeAsyncIterator()
             self._next = {
-                // `try?` is provably safe given the `S.Failure == Never` constraint above —
-                // it just satisfies the legacy untyped-throws `next()` signature.
-                try? await iterator.next()
+                // Stays on the caller's isolation; `S.Failure == Never` makes it non-throwing.
+                await iterator.next(isolation: #isolation)
             }
         }
 

@@ -324,8 +324,8 @@ The result builder has one `buildPartialBlock` overload per shape, plus a `Never
 
 ## Requirements
 
-- Swift 6.2+, Swift language mode 6
-- macOS 15+ / iOS 18+ / tvOS 18+ / watchOS 11+ / visionOS 2+ / Linux (for `Synchronization.Mutex` and fp-swift's ordered concurrency helpers)
+- Swift 6.3+, Swift language mode 6
+- macOS 26+ / iOS 26+ / tvOS 26+ / watchOS 26+ / visionOS 26+ / Linux (for `Synchronization.Mutex` and fp-swift's ordered concurrency helpers)
 - Strict concurrency: clean
 
 Every platform is exercised in CI: macOS, Ubuntu Linux, and the iOS, tvOS, watchOS, and visionOS simulators.

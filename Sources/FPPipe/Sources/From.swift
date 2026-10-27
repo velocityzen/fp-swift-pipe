@@ -191,9 +191,8 @@ where Base.Element: Sendable, Base.Failure == Never {
         }
 
         mutating func next() async -> Result<Base.Element, Never>? {
-            // `try?` is provably safe given `Base.Failure == Never` above — it just
-            // satisfies the legacy untyped-throws `next()` signature.
-            guard let element = try? await iterator.next() else { return nil }
+            // Stays on the caller's isolation; `Base.Failure == Never` makes it non-throwing.
+            guard let element = await iterator.next(isolation: #isolation) else { return nil }
             return .success(element)
         }
     }

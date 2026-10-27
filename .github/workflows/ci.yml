@@ -79,10 +79,14 @@ jobs:
           xcodebuild test -scheme fp-swift-pipe -destination "id=$UDID,arch=arm64" | tail -60
 
   linux:
-    name: Test Linux
+    name: Test Linux (Swift ${{ matrix.swift }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ["6.3", "6.4"]
     container:
-      image: swift:6.2
+      image: swift:${{ matrix.swift }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

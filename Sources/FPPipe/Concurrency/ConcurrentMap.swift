@@ -34,7 +34,7 @@ private func asyncStream<T: Sendable>(
 func mapAsyncUnordered<Source, T>(
     _ source: Source,
     concurrency: Int,
-    _ transform: @escaping @Sendable (Source.Element) async -> T,
+    _ transform: @concurrent @escaping @Sendable (Source.Element) async -> T,
 ) -> AsyncStream<T>
 where
     Source: AsyncSequence & Sendable,
@@ -49,7 +49,7 @@ where
             // Prime up to N tasks.
             for _ in 0..<concurrency {
                 if Task.isCancelled { break }
-                guard let element = try? await iter.next() else {
+                guard let element = await iter.next(isolation: #isolation) else {
                     break
                 }
 
@@ -65,7 +65,7 @@ where
                     break
                 }
                 continuation.yield(result)
-                if let element = try? await iter.next() {
+                if let element = await iter.next(isolation: #isolation) {
                     group.addTask {
                         await transform(element)
                     }
@@ -78,7 +78,7 @@ where
 func compactMapAsyncUnordered<Source, T>(
     _ source: Source,
     concurrency: Int,
-    _ transform: @escaping @Sendable (Source.Element) async -> T?,
+    _ transform: @concurrent @escaping @Sendable (Source.Element) async -> T?,
 ) -> AsyncStream<T>
 where
     Source: AsyncSequence & Sendable,
