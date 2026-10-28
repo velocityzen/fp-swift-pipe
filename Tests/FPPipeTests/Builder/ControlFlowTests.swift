@@ -227,6 +227,75 @@ func ifWithoutElseInsideOpenPipeWithPolyValueStage() async {
     #expect(passthrough == .success([3, 4]))
 }
 
+@Test
+func ifWithoutElseAllowsTypePreservingFailureFixedStage() async {
+    func make(_ strict: Bool) -> Pipe<Int, E> {
+        Pipe {
+            From([1, 2, 3])
+            FlatMap { (n: Int) -> Result<Int, E> in .success(n) }
+            if strict {
+                // PipeStage<Int, Int, E>
+                FlatMap { (n: Int) -> Result<Int, E> in n > 2 ? .failure(.bad) : .success(n) }
+            }
+        }
+    }
+    var seen: [Result<Int, E>] = []
+    for await x in make(true) { seen.append(x) }
+    #expect(seen == [.success(1), .success(2), .failure(.bad)])
+    #expect(await make(false).toResult() == .success([1, 2, 3]))
+}
+
+@Test
+func ifWithoutElseAllowsTypePreservingFlatErrorStage() async {
+    func make(_ recover: Bool) -> Pipe<Int, E> {
+        Pipe {
+            From([1, -1, 2])
+            FlatMap { (n: Int) -> Result<Int, E> in n < 0 ? .failure(.bad) : .success(n) }
+            if recover {
+                Alt { () -> Result<Int, E> in .success(0) }  // PipeFlatErrorStage<Int, E, E>
+            }
+        }
+    }
+    #expect(await make(true).toResult() == .success([1, 0, 2]))
+    var seen: [Result<Int, E>] = []
+    for await x in make(false) { seen.append(x) }
+    #expect(seen == [.success(1), .failure(.bad), .success(2)])
+}
+
+@Test
+func ifWithoutElseInsideOpenPipeWithFailureFixedStage() async {
+    func make(_ strict: Bool) -> OpenPipe<Int, Int, E> {
+        OpenPipe {
+            From(Int.self)
+            FlatMap { (n: Int) -> Result<Int, E> in .success(n) }
+            if strict {
+                FlatMap { (n: Int) -> Result<Int, E> in n > 2 ? .failure(.bad) : .success(n) }
+            }
+        }
+    }
+    var seen: [Result<Int, E>] = []
+    for await x in make(true)([1, 3]) { seen.append(x) }
+    #expect(seen == [.success(1), .failure(.bad)])
+    #expect(await make(false)([1, 3]).toResult() == .success([1, 3]))
+}
+
+@Test
+func ifWithoutElseInsideOpenPipeWithFlatErrorStage() async {
+    func make(_ recover: Bool) -> OpenPipe<Int, Int, E> {
+        OpenPipe {
+            From(Int.self)
+            FlatMap { (n: Int) -> Result<Int, E> in n < 0 ? .failure(.bad) : .success(n) }
+            if recover {
+                FlatMapError { (_: E) -> Result<Int, E> in .success(0) }
+            }
+        }
+    }
+    #expect(await make(true)([1, -1]).toResult() == .success([1, 0]))
+    var seen: [Result<Int, E>] = []
+    for await x in make(false)([1, -1]) { seen.append(x) }
+    #expect(seen == [.success(1), .failure(.bad)])
+}
+
 // MARK: - Open-pipe if/else
 
 @Test

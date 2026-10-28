@@ -108,7 +108,7 @@ Key shapes used:
 | `From(seq)` | Lift an `AsyncSequence` or `Sequence` of bare values (each → `.success`). |
 | `FromResult(seq)` | Lift an `AsyncSequence` of `Result` elements directly. |
 | `Defer { … }` / `DeferResult { … }` | Multi-statement, re-iteration-fresh source construction. |
-| `FromAsync { await … }` / `FromAsyncResult { … }` | Source whose **producer is async** — useful when iteration needs async setup (cursors, authenticated streams). Closure is re-awaited per iteration. |
+| `FromAsync { await … }` / `FromAsyncResult { … }` | Source whose **producer is async** — useful when iteration needs async setup (cursors, authenticated streams). Closure is re-awaited per iteration, on the first pull; the sequence it returns is then read lazily, one element per pull, so nothing is buffered ahead of the consumer. |
 | `From(T.self)` / `FromAsync(T.self)` | **Open** marker — declares an `Input` to be supplied at call time. Builds an `OpenPipe<T, …, …>` instead of a `Pipe`. See [Open pipes](#open-pipes). |
 | `FromResult(V.self, E.self)` / `FromAsyncResult(V.self, E.self)` | **Open** marker for a Result-bearing input — `pipe(stream)` accepts an `AsyncSequence<Result<V, E>>` and lifts inner failures into the channel. |
 | `Success(value)` / `Of(value)` | Single success (`Of` is an alias). |
@@ -231,6 +231,12 @@ AsyncCompactMap(concurrency: 6) { id in await maybeLookUp(id) }
 
 Use the unordered variants when order doesn't matter (typical for fan-out fetch + decode). Use the `KeepOrder` variants when downstream expects source order (e.g. zipping with another sequence). The `FlatMap` variants take a `Result`-returning closure so per-element failures lift directly into the pipeline's failure channel.
 
+With `concurrency > 1` every `Async*` stage applies backpressure: an element holds its slot from the moment it is admitted until the consumer takes its result, so at most `concurrency` elements are transforming or waiting to be consumed. A slow consumer pauses the source rather than growing a buffer. Unordered stages emit each result the moment its closure finishes, independently of how fast the source produces the next element, and elements a stage doesn't transform (e.g. failures through `AsyncMap`) pass straight through without spawning a task.
+
+`concurrency:` and `bufferSize:` must be at least 1 (like `Take`/`Drop` counts must be non-negative) — an invalid value is a programmer error and traps.
+
+With `concurrency: 1` (the default) a stage's closure runs inline in the consumer's task and, because FPPipe adopts `NonisolatedNonsendingByDefault`, on the consumer's actor. With `concurrency > 1` closures run in child tasks, off the caller's actor.
+
 `AsyncTap` / `AsyncTapError` deliberately have no `concurrency:` parameter — observation stages run sequentially to keep side-effect ordering predictable.
 
 ### Cancellation
@@ -261,7 +267,7 @@ let pipe = Pipe<Int, Never> {
 }
 ```
 
-`if` without `else` works for **type-preserving stages only** — `Take`, `Drop`, `Tap`, `TapError`, `AsyncTap`, `AsyncTapError`, and any `Filter`/`Map`/`AsyncFilter`/`AsyncMap` whose Input equals Output. The "absent" branch must yield the same Pipe type as the "present" branch, which forces the stage not to change types.
+`if` without `else` works for **type-preserving stages only** — `Take`, `Drop`, `Tap`, `TapError`, `AsyncTap`, `AsyncTapError`, any `Filter`/`Map`/`AsyncFilter`/`AsyncMap` whose Input equals Output, any `FlatMap`/`AsyncFlatMap` from `A` to `Result<A, F>`, and `Alt`/`AsyncAlt`/`FlatMapError`/`AsyncFlatMapError` that keep the failure type. The "absent" branch must yield the same Pipe type as the "present" branch, which forces the stage not to change types.
 
 ```swift
 let pipe = Pipe<Int, Never> {
@@ -269,6 +275,12 @@ let pipe = Pipe<Int, Never> {
     if logging { Tap { print($0) } }    // type-preserving — OK
     if dropFirst { Drop(2) }             // forwarding stage — OK
     if dropOdds { Filter { $0.isMultiple(of: 2) } }   // PolyStage Int→Int — OK
+}
+
+let recovering = Pipe<Int, ParseError> {
+    From(lines)
+    FlatMap(parse)                             // String → Result<Int, ParseError>
+    if lenient { Alt { .success(0) } }         // keeps ParseError — OK
 }
 ```
 

@@ -12,32 +12,33 @@ struct AsyncFilterStage<Value: Sendable>: PipePolyStage {
 
     init(_ predicate: @escaping @Sendable (Value) async -> Bool, concurrency: Int) {
         self.predicate = predicate
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach<F: Error & Sendable>(_ upstream: Pipe<Value, F>) -> Pipe<Value, F> {
         let predicate = self.predicate
         let concurrency = self.concurrency
+        // Shared by both branches; failures never reach it on the concurrent path,
+        // which passes them through without a child task.
+        let step: @Sendable (Result<Value, F>) async -> Result<Value, F>? = { element in
+            switch element {
+                case .failure: return element
+                case .success(let value): return await predicate(value) ? element : nil
+            }
+        }
         return .erased {
             let source = upstream.upstream()
             if concurrency == 1 {
-                return AnyAsyncSequence(
-                    source.compactMap { (element: Result<Value, F>) -> Result<Value, F>? in
-                        switch element {
-                            case .failure: return element
-                            case .success(let value): return await predicate(value) ? element : nil
-                        }
-                    },
-                )
+                return AnyAsyncSequence(source.compactMap(step))
             }
             return AnyAsyncSequence(
-                compactMapAsyncUnordered(source, concurrency: concurrency) {
-                    (element: Result<Value, F>) async -> Result<Value, F>? in
-                    switch element {
-                        case .failure: return element
-                        case .success(let value): return await predicate(value) ? element : nil
-                    }
-                },
+                compactMapAsyncUnordered(
+                    source,
+                    concurrency: concurrency,
+                    passthrough: { $0.passthroughFailure() },
+                    step,
+                ),
             )
         }
     }

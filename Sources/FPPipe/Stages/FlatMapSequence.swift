@@ -16,6 +16,7 @@ where Inner.Element: Sendable {
     private let transform: @Sendable (Input) -> Inner
 
     init(_ transform: @escaping @Sendable (Input) -> Inner, bufferSize: Int) {
+        precondition(bufferSize >= 1, "bufferSize must be at least 1")
         self.bufferSize = bufferSize
         self.transform = transform
     }

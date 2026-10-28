@@ -19,7 +19,8 @@ struct AsyncFlatMapKeepOrderStage<Input: Sendable, Output: Sendable, Failure: Er
         concurrency: Int,
     ) {
         self.transform = transform
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach(_ upstream: Pipe<Input, Failure>) -> Pipe<Output, Failure> {

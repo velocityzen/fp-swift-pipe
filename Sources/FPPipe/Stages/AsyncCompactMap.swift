@@ -10,36 +10,35 @@ struct AsyncCompactMapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
 
     init(_ transform: @escaping @Sendable (Input) async -> Output?, concurrency: Int) {
         self.transform = transform
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
         let transform = self.transform
         let concurrency = self.concurrency
+        // Shared by both branches; failures never reach it on the concurrent path,
+        // which passes them through without a child task.
+        let step: @Sendable (Result<Input, F>) async -> Result<Output, F>? = { element in
+            switch element {
+                case .failure(let error): return .failure(error)
+                case .success(let value):
+                    guard let mapped = await transform(value) else { return nil }
+                    return .success(mapped)
+            }
+        }
         return .erased {
             let source = upstream.upstream()
             if concurrency == 1 {
-                return AnyAsyncSequence(
-                    source.compactMap { (element: Result<Input, F>) async -> Result<Output, F>? in
-                        switch element {
-                            case .failure(let error): return .failure(error)
-                            case .success(let value):
-                                guard let mapped = await transform(value) else { return nil }
-                                return .success(mapped)
-                        }
-                    },
-                )
+                return AnyAsyncSequence(source.compactMap(step))
             }
             return AnyAsyncSequence(
-                compactMapAsyncUnordered(source, concurrency: concurrency) {
-                    (element: Result<Input, F>) async -> Result<Output, F>? in
-                    switch element {
-                        case .failure(let error): return .failure(error)
-                        case .success(let value):
-                            guard let mapped = await transform(value) else { return nil }
-                            return .success(mapped)
-                    }
-                },
+                compactMapAsyncUnordered(
+                    source,
+                    concurrency: concurrency,
+                    passthrough: { $0.passthroughFailure() },
+                    step,
+                ),
             )
         }
     }

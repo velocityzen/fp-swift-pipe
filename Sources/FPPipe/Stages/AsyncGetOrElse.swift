@@ -15,7 +15,8 @@ struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorS
 
     init(_ onFailure: @escaping @Sendable (F) async -> Value, concurrency: Int) {
         self.onFailure = onFailure
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach(_ upstream: Pipe<Value, F>) -> Pipe<Value, Never> {
@@ -31,10 +32,15 @@ struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorS
                 )
             }
             return AnyAsyncSequence(
-                mapAsyncUnordered(source, concurrency: concurrency) {
-                    (element: Result<Value, F>) async -> Result<Value, Never> in
-                    .success(await element.getOrElseAsync(onFailure))
-                },
+                mapAsyncUnordered(
+                    source,
+                    concurrency: concurrency,
+                    passthrough: { $0.passthroughSuccess() },
+                    {
+                        (element: Result<Value, F>) async -> Result<Value, Never> in
+                        .success(await element.getOrElseAsync(onFailure))
+                    },
+                ),
             )
         }
     }

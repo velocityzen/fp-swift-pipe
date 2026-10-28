@@ -13,7 +13,8 @@ struct AsyncMapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
 
     init(_ transform: @escaping @Sendable (Input) async -> Output, concurrency: Int) {
         self.transform = transform
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
@@ -25,10 +26,15 @@ struct AsyncMapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
                 return AnyAsyncSequence(source.mapAsync(transform))
             }
             return AnyAsyncSequence(
-                mapAsyncUnordered(source, concurrency: concurrency) {
-                    (element: Result<Input, F>) async -> Result<Output, F> in
-                    await element.mapAsync(transform)
-                },
+                mapAsyncUnordered(
+                    source,
+                    concurrency: concurrency,
+                    passthrough: { $0.passthroughFailure() },
+                    {
+                        (element: Result<Input, F>) async -> Result<Output, F> in
+                        await element.mapAsync(transform)
+                    },
+                ),
             )
         }
     }

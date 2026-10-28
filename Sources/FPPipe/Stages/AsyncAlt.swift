@@ -17,7 +17,8 @@ struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
         concurrency: Int,
     ) {
         self.alternative = alternative
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach(_ upstream: Pipe<Value, F>) -> Pipe<Value, F> {
@@ -33,10 +34,15 @@ struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
                 )
             }
             return AnyAsyncSequence(
-                mapAsyncUnordered(source, concurrency: concurrency) {
-                    (element: Result<Value, F>) async -> Result<Value, F> in
-                    await element.altAsync(alternative)
-                },
+                mapAsyncUnordered(
+                    source,
+                    concurrency: concurrency,
+                    passthrough: { $0.passthroughSuccess() },
+                    {
+                        (element: Result<Value, F>) async -> Result<Value, F> in
+                        await element.altAsync(alternative)
+                    },
+                ),
             )
         }
     }

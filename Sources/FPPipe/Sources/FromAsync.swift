@@ -1,46 +1,76 @@
-import FP
-
 // MARK: - Source backing type
 
-/// Defers a source behind an `async` constructor. On each iteration, `make` is awaited to
-/// produce an inner sequence, which is then drained via the supplied `drain` closure. The
-/// three differing source shapes (async/sync iteration × bare/Result element) all collapse
-/// into this single struct — the variation lives entirely in the `drain` closure.
+/// Defers a source behind an `async` constructor. On each iteration, `make` is awaited on
+/// the first `next()` to produce an inner sequence, which is then read one element per
+/// pull via the closure `makeNext` builds. The differing source shapes (async/sync
+/// iteration × bare/Result element) all collapse into this single struct — the variation
+/// lives entirely in `makeNext`.
+///
+/// Nothing is read ahead of the consumer: there is no producer task and no buffer, so a
+/// huge inner sequence never lands in memory at once and `make` runs in the consumer's
+/// task, on its isolation.
 struct AsyncDeferredSource<Inner: Sendable, Output: Sendable, Failure: Error & Sendable>:
     PipeSource
 {
     private let make: @Sendable () async -> Inner
-    private let drain:
-        @Sendable (Inner, AsyncStream<Result<Output, Failure>>.Continuation) async -> Void
+    private let makeNext: @Sendable (Inner) -> () async -> Result<Output, Failure>?
 
     init(
         make: @escaping @Sendable () async -> Inner,
-        drain:
-            @escaping @Sendable (Inner, AsyncStream<Result<Output, Failure>>.Continuation)
-            async -> Void,
+        makeNext: @escaping @Sendable (Inner) -> () async -> Result<Output, Failure>?,
     ) {
         self.make = make
-        self.drain = drain
+        self.makeNext = makeNext
     }
 
     func produce() -> Pipe<Output, Failure> {
         let make = self.make
-        let drain = self.drain
+        let makeNext = self.makeNext
         return .erased {
-            AnyAsyncSequence(
-                // `.unbounded` is explicit. AsyncStream has no native backpressure; if the
-                // produced sequence outpaces a stalled consumer, the queue grows. For typical
-                // async sources (cursors, network streams) production is throttled by the
-                // upstream's own latency.
-                AsyncStream<Result<Output, Failure>>(bufferingPolicy: .unbounded) { continuation in
-                    let task = Task {
-                        let inner = await make()
-                        await drain(inner, continuation)
-                        continuation.finish()
-                    }
-                    continuation.onTermination = { _ in task.cancel() }
-                },
-            )
+            AnyAsyncSequence(DeferredSequence(make: make, makeNext: makeNext))
+        }
+    }
+}
+
+/// The lazily-started sequence behind `AsyncDeferredSource`.
+struct DeferredSequence<Inner: Sendable, Element: Sendable>: AsyncSequence, Sendable {
+    let make: @Sendable () async -> Inner
+    let makeNext: @Sendable (Inner) -> () async -> Element?
+
+    func makeAsyncIterator() -> Iterator {
+        Iterator(make: make, makeNext: makeNext)
+    }
+
+    struct Iterator: AsyncIteratorProtocol {
+        private enum State {
+            case pending
+            case running(() async -> Element?)
+            case finished
+        }
+
+        private let make: @Sendable () async -> Inner
+        private let makeNext: @Sendable (Inner) -> () async -> Element?
+        private var state = State.pending
+
+        init(
+            make: @escaping @Sendable () async -> Inner,
+            makeNext: @escaping @Sendable (Inner) -> () async -> Element?,
+        ) {
+            self.make = make
+            self.makeNext = makeNext
+        }
+
+        mutating func next() async -> Element? {
+            if case .pending = state {
+                state = .running(makeNext(await make()))
+            }
+            guard case .running(let pull) = state, !Task.isCancelled,
+                let element = await pull()
+            else {
+                state = .finished
+                return nil
+            }
+            return element
         }
     }
 }
@@ -56,11 +86,9 @@ public func FromAsync<S: AsyncSequence & Sendable>(
 where S.Element: Sendable, S.Failure == Never {
     AsyncDeferredSource<S, S.Element, Never>(
         make: make,
-        drain: { inner, continuation in
-            for await element in inner {
-                continuation.success(element)
-                if Task.isCancelled { break }
-            }
+        makeNext: { inner in
+            var iterator = inner.makeAsyncIterator()
+            return { await iterator.next(isolation: #isolation).map(Result.success) }
         },
     )
 }
@@ -74,11 +102,9 @@ public func FromAsync<S: Sequence & Sendable>(
 where S.Element: Sendable {
     AsyncDeferredSource<S, S.Element, Never>(
         make: make,
-        drain: { inner, continuation in
-            for element in inner {
-                continuation.success(element)
-                if Task.isCancelled { break }
-            }
+        makeNext: { inner in
+            var iterator = inner.makeIterator()
+            return { iterator.next().map(Result.success) }
         },
     )
 }
@@ -90,11 +116,9 @@ public func FromAsyncResult<S: AsyncSequence & Sendable, V: Sendable, E: Error &
 where S.Element == Result<V, E>, S.Failure == Never {
     AsyncDeferredSource<S, V, E>(
         make: make,
-        drain: { inner, continuation in
-            for await element in inner {
-                continuation.yield(element)
-                if Task.isCancelled { break }
-            }
+        makeNext: { inner in
+            var iterator = inner.makeAsyncIterator()
+            return { await iterator.next(isolation: #isolation) }
         },
     )
 }

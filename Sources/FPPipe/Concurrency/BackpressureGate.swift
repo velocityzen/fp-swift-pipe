@@ -23,7 +23,8 @@ final class BackpressureGate: Sendable {
     private let mutex: Mutex<State>
 
     init(capacity: Int) {
-        self.mutex = Mutex(State(available: max(1, capacity)))
+        precondition(capacity >= 1, "capacity must be at least 1")
+        self.mutex = Mutex(State(available: capacity))
     }
 
     /// Producer side: returns when a buffer slot is free, or immediately on task

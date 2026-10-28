@@ -19,7 +19,8 @@ struct AsyncMatchStage<Input: Sendable, Output: Sendable, InputFailure: Error & 
     ) {
         self.onSuccess = onSuccess
         self.onFailure = onFailure
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach(_ upstream: Pipe<Input, InputFailure>) -> Pipe<Output, Never> {

@@ -248,6 +248,22 @@ public enum PipeBuilder {
         return stage.attach(accumulated)
     }
 
+    public static func buildPartialBlock<U: Sendable, St: PipeStage>(
+        accumulated: Pipe<U, St.Failure>,
+        next optional: OptionalStage<St>,
+    ) -> Pipe<U, St.Failure> where St.Input == U, St.Output == U {
+        guard let stage = optional.stage else { return accumulated }
+        return stage.attach(accumulated)
+    }
+
+    public static func buildPartialBlock<St: PipeFlatErrorStage>(
+        accumulated: Pipe<St.Value, St.InputFailure>,
+        next optional: OptionalStage<St>,
+    ) -> Pipe<St.Value, St.InputFailure> where St.InputFailure == St.OutputFailure {
+        guard let stage = optional.stage else { return accumulated }
+        return stage.attach(accumulated)
+    }
+
     public static func buildPartialBlock<
         I: Sendable,
         V: Sendable,
@@ -284,6 +300,28 @@ public enum PipeBuilder {
         accumulated: OpenPipe<I, V, St.InputFailure>,
         next optional: OptionalStage<St>,
     ) -> OpenPipe<I, V, St.InputFailure> where St.InputFailure == St.OutputFailure {
+        OpenPipe(apply: { input in
+            let acc = accumulated.apply(input)
+            guard let stage = optional.stage else { return acc }
+            return stage.attach(acc)
+        })
+    }
+
+    public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
+        accumulated: OpenPipe<I, U, St.Failure>,
+        next optional: OptionalStage<St>,
+    ) -> OpenPipe<I, U, St.Failure> where St.Input == U, St.Output == U {
+        OpenPipe(apply: { input in
+            let acc = accumulated.apply(input)
+            guard let stage = optional.stage else { return acc }
+            return stage.attach(acc)
+        })
+    }
+
+    public static func buildPartialBlock<I: Sendable, St: PipeFlatErrorStage>(
+        accumulated: OpenPipe<I, St.Value, St.InputFailure>,
+        next optional: OptionalStage<St>,
+    ) -> OpenPipe<I, St.Value, St.InputFailure> where St.InputFailure == St.OutputFailure {
         OpenPipe(apply: { input in
             let acc = accumulated.apply(input)
             guard let stage = optional.stage else { return acc }

@@ -17,7 +17,8 @@ struct AsyncFlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sen
         concurrency: Int,
     ) {
         self.transform = transform
-        self.concurrency = max(1, concurrency)
+        precondition(concurrency >= 1, "concurrency must be at least 1")
+        self.concurrency = concurrency
     }
 
     func attach(_ upstream: Pipe<Input, Failure>) -> Pipe<Output, Failure> {
@@ -29,10 +30,15 @@ struct AsyncFlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sen
                 return AnyAsyncSequence(source.flatMapAsync(transform))
             }
             return AnyAsyncSequence(
-                mapAsyncUnordered(source, concurrency: concurrency) {
-                    (element: Result<Input, Failure>) async -> Result<Output, Failure> in
-                    await element.flatMapAsync(transform)
-                },
+                mapAsyncUnordered(
+                    source,
+                    concurrency: concurrency,
+                    passthrough: { $0.passthroughFailure() },
+                    {
+                        (element: Result<Input, Failure>) async -> Result<Output, Failure> in
+                        await element.flatMapAsync(transform)
+                    },
+                ),
             )
         }
     }
