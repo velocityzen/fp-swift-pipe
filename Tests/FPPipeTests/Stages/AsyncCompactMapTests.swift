@@ -28,32 +28,18 @@ func asyncCompactMapConcurrentRetainsParsedValues() async {
 
 @Test
 func asyncCompactMapConcurrentParallelizesWork() async {
-    // 5 elements × 100ms each. Sequential bound: 500ms. Concurrent: ~100ms.
-    // Per-element work dominates scheduler overhead on shared CI runners.
+    // Every transform waits until all `count` are running at once — reachable only if the
+    // stage runs them in parallel. No wall-clock bound, so a loaded CI runner can't flake it.
     let count = 5
-    let perElementMs: UInt64 = 100
+    let rendezvous = Rendezvous(expected: count)
     let pipe = Pipe<Int, Never> {
         From(0..<count)
         AsyncCompactMap(concurrency: count) { (n: Int) async -> Int? in
-            try? await Task.sleep(nanoseconds: perElementMs * 1_000_000)
+            await rendezvous.enter()
             return n
         }
     }
 
-    // Simulators can stall ~10s warming up under CI, so the wall-clock bound runs on
-    // macOS/Linux only.
-    #if os(macOS) || os(Linux)
-    let clock = ContinuousClock()
-    let start = clock.now
-    #endif
     _ = await pipe.toResult()
-    #if os(macOS) || os(Linux)
-    let elapsed = start.duration(to: clock.now)
-    let observedMs =
-        Double(elapsed.components.seconds) * 1_000
-        + Double(elapsed.components.attoseconds) / 1e15
-
-    let sequentialMs = Double(count) * Double(perElementMs)
-    #expect(observedMs < sequentialMs / 2)
-    #endif
+    #expect(rendezvous.peak == count)
 }
