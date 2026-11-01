@@ -98,16 +98,15 @@ func flatMapAsyncSequenceExpansionIsBoundedByBufferSize() async {
 
     let result = await pipe.toResult()
     #expect(result == .success([0, 1, 2, 3, 4]))
-    // Invariant, not a race: the producer can never run more than `bufferSize` slots
-    // ahead of the 5 consumed elements, plus the one element vended while awaiting its
-    // slot. The remaining ~986 elements are provably never produced.
-    #expect(counter.current <= 5 + 8 + 1)
+    // Invariant, not a race: the producer waits for a free slot before it expands the
+    // next element, so it never runs more than `bufferSize` ahead of the 5 consumed
+    // elements. The remaining ~987 elements are provably never produced.
+    #expect(counter.current <= 5 + 8)
 }
 
 @Test
 func flatMapAsyncSequenceWithBufferSizeOneDeliversEverythingInOrder() async {
-    // Rendezvous-sized buffer over a large expansion: every element round-trips
-    // through producer suspension and consumer release without loss or reordering.
+    // Lockstep expansion of a large inner sequence: every element arrives, in order.
     let pipe = Pipe<Int, Never> {
         From([2_000])
         FlatMapAsyncSequence(bufferSize: 1) { (n: Int) in

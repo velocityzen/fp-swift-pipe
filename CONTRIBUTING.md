@@ -27,7 +27,7 @@ swiftlint --strict
 | `Sources/FPPipe/Sources/` | `From`, `Defer`, `FromAsync`, `Success`, `Failure`, `Empty` |
 | `Sources/FPPipe/Stages/` | one file per stage |
 | `Sources/FPPipe/Sinks/` | `toResult`, `toArray`, `reduce`, `first…` |
-| `Sources/FPPipe/Concurrency/` | the passthroughs the unordered `Async*` stages hand to fp-swift's `compactMapAsyncUnordered` at `concurrency > 1`, and the backpressure gate of the fan-out stages |
+| `Sources/FPPipe/Concurrency/` | how the pipe uses fp-swift's `compactMapAsyncUnordered`: the passthroughs of the unordered `Async*` stages at `concurrency > 1`, and the read-ahead of the fan-out stages at `bufferSize > 1` |
 
 ## Design rules
 

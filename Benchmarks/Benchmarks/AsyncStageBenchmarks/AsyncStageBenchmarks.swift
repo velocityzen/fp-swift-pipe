@@ -178,18 +178,16 @@ let benchmarks: @Sendable () -> Void = {
                     blackHole(await drain(flatMapSequence))
                 }
             }
-        }
 
-        let flatMapAsyncSequence = Pipe<Int, Never> {
-            From(0..<n)
-            FlatMapAsyncSequence { (_: Int) in CountingSequence(2) }
-        }
-        Benchmark(
-            "FlatMapAsyncSequence",
-            configuration: .pipe(["n": "\(n)", "bufferSize": "1"], scaling: scaling)
-        ) { benchmark in
-            for _ in benchmark.scaledIterations {
-                blackHole(await drain(flatMapAsyncSequence))
+            let flatMapAsyncSequence = Pipe<Int, Never> {
+                From(0..<n)
+                FlatMapAsyncSequence(bufferSize: bufferSize) { (_: Int) in CountingSequence(2) }
+            }
+            Benchmark("FlatMapAsyncSequence", configuration: .pipe(tags, scaling: scaling)) {
+                benchmark in
+                for _ in benchmark.scaledIterations {
+                    blackHole(await drain(flatMapAsyncSequence))
+                }
             }
         }
     }

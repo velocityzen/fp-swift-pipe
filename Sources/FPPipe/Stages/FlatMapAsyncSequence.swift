@@ -1,3 +1,5 @@
+import FP
+
 /// Expands each successful element into a sub-`AsyncSequence` of values, concatenated
 /// in source order. Failures from upstream pass through unchanged; the inner sequence
 /// is consumed to completion before moving to the next upstream element.
@@ -29,51 +31,20 @@ where Inner.Element: Sendable, Inner.Failure == Never {
     @inlinable
     func attach<F: Error & Sendable>(_ upstream: Pipe<Input, F>) -> Pipe<Output, F> {
         let transform = self.transform
+        let expansion = Pipe<Output, F>.iterating {
+            .init(FlatMapAsyncSequenceIterator(upstream.makeAsyncIterator(), transform: transform))
+        }
         if bufferSize == 1 {
-            return .iterating {
-                .init(
-                    FlatMapAsyncSequenceIterator(
-                        upstream.makeAsyncIterator(),
-                        transform: transform,
-                    ),
-                )
-            }
+            return expansion
         }
         let bufferSize = self.bufferSize
-        return .iterating {
-            // The gate bounds buffer occupancy to `bufferSize` — see FlatMapSequence.
-            // `.unbounded` only needs to be lossless, never to bound.
-            let gate = BackpressureGate(capacity: bufferSize)
-            let stream = AsyncStream<Result<Output, F>>(bufferingPolicy: .unbounded) {
-                continuation in
-                let task = Task {
-                    for await element in upstream {
-                        switch element {
-                            case .failure(let error):
-                                await gate.acquire()
-                                if !Task.isCancelled {
-                                    continuation.yield(.failure(error))
-                                }
-                            case .success(let value):
-                                for await innerValue in transform(value) {
-                                    await gate.acquire()
-                                    if Task.isCancelled { break }
-                                    continuation.yield(.success(innerValue))
-                                }
-                        }
-                        if Task.isCancelled { break }
-                    }
-                    continuation.finish()
-                }
-                continuation.onTermination = { _ in task.cancel() }
-            }
-            return .init(StepIterator(stream.makeAsyncIterator(), step: ReleaseStep(gate)))
-        }
+        return .iterating { .init(expansion.readAhead(bufferSize).makeAsyncIterator()) }
     }
 }
 
 /// Lockstep expansion: reads the next upstream element only once the current inner
-/// sequence is exhausted, and stops when the consuming task is cancelled.
+/// sequence is exhausted, and stops when the consuming task is cancelled. Above
+/// `bufferSize: 1` it runs in the read-ahead task rather than the consumer's.
 @usableFromInline
 struct FlatMapAsyncSequenceIterator<
     Base: AsyncIteratorProtocol,
