@@ -5,13 +5,15 @@ import FP
 ///
 /// `concurrency` controls how many fallbacks run in parallel. Default 1 is strictly
 /// sequential. With `concurrency > 1` results emit as they complete (unordered).
+@usableFromInline
 struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
-    typealias InputFailure = F
-    typealias OutputFailure = F
+    @usableFromInline typealias InputFailure = F
+    @usableFromInline typealias OutputFailure = F
 
-    private let alternative: @Sendable () async -> Result<Value, F>
-    private let concurrency: Int
+    @usableFromInline let alternative: @Sendable () async -> Result<Value, F>
+    @usableFromInline let concurrency: Int
 
+    @inlinable
     init(
         _ alternative: @escaping @Sendable () async -> Result<Value, F>,
         concurrency: Int,
@@ -21,34 +23,43 @@ struct AsyncAltStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
         self.concurrency = concurrency
     }
 
+    @inlinable
     func attach(_ upstream: Pipe<Value, F>) -> Pipe<Value, F> {
-        let alternative = self.alternative
+        let step = AsyncAltStep(alternative)
+        if concurrency == 1 {
+            return .iterating { .init(AsyncStepIterator(upstream.makeAsyncIterator(), step: step)) }
+        }
         let concurrency = self.concurrency
-        return .erased {
-            let source = upstream.upstream()
-            if concurrency == 1 {
-                return AnyAsyncSequence(
-                    source.map { (element: Result<Value, F>) async -> Result<Value, F> in
-                        await element.altAsync(alternative)
-                    },
-                )
-            }
-            return AnyAsyncSequence(
-                mapAsyncUnordered(
-                    source,
+        return .iterating {
+            .init(
+                upstream.compactMapAsyncUnordered(
                     concurrency: concurrency,
                     passthrough: { $0.passthroughSuccess() },
-                    {
-                        (element: Result<Value, F>) async -> Result<Value, F> in
-                        await element.altAsync(alternative)
-                    },
-                ),
+                    { element in await step(element) },
+                )
+                .makeAsyncIterator(),
             )
         }
     }
 }
 
+@usableFromInline
+struct AsyncAltStep<Value, F: Error>: AsyncPipeStep {
+    @usableFromInline let alternative: @Sendable () async -> Result<Value, F>
+
+    @inlinable
+    init(_ alternative: @escaping @Sendable () async -> Result<Value, F>) {
+        self.alternative = alternative
+    }
+
+    @inlinable
+    func callAsFunction(_ element: Result<Value, F>) async -> Result<Value, F>? {
+        await element.altAsync(alternative)
+    }
+}
+
 /// DSL: `AsyncAlt { await fetchFromCache() }`.
+@inlinable
 public func AsyncAlt<Value: Sendable, F: Error & Sendable>(
     concurrency: Int = 1,
     _ alternative: @escaping @Sendable () async -> Result<Value, F>,

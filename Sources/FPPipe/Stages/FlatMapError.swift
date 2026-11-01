@@ -4,31 +4,43 @@ import FP
 /// failure type may differ from the input — yield `.success` to recover, `.failure`
 /// to re-fail with a (possibly different) error. Internally delegates to fp-swift's
 /// `Result.orElse`.
+@usableFromInline
 struct FlatMapErrorStage<
     Value: Sendable,
     InputFailure: Error & Sendable,
     OutputFailure: Error & Sendable,
 >: PipeFlatErrorStage {
-    private let transform: @Sendable (InputFailure) -> Result<Value, OutputFailure>
+    @usableFromInline let transform: @Sendable (InputFailure) -> Result<Value, OutputFailure>
 
+    @inlinable
     init(_ transform: @escaping @Sendable (InputFailure) -> Result<Value, OutputFailure>) {
         self.transform = transform
     }
 
+    @inlinable
     func attach(_ upstream: Pipe<Value, InputFailure>) -> Pipe<Value, OutputFailure> {
-        let transform = self.transform
-        return .erased {
-            AnyAsyncSequence(
-                upstream.upstream().map {
-                    (element: Result<Value, InputFailure>) -> Result<Value, OutputFailure> in
-                    element.orElse(transform)
-                },
-            )
-        }
+        let step = FlatMapErrorStep(transform)
+        return .iterating { .init(StepIterator(upstream.makeAsyncIterator(), step: step)) }
+    }
+}
+
+@usableFromInline
+struct FlatMapErrorStep<Value, InputFailure: Error, OutputFailure: Error>: PipeStep {
+    @usableFromInline let transform: @Sendable (InputFailure) -> Result<Value, OutputFailure>
+
+    @inlinable
+    init(_ transform: @escaping @Sendable (InputFailure) -> Result<Value, OutputFailure>) {
+        self.transform = transform
+    }
+
+    @inlinable
+    func callAsFunction(_ element: Result<Value, InputFailure>) -> Result<Value, OutputFailure>? {
+        element.orElse(transform)
     }
 }
 
 /// DSL: `FlatMapError { (e: NetError) -> Result<Item, AppError> in … }`.
+@inlinable
 public func FlatMapError<
     Value: Sendable,
     InputFailure: Error & Sendable,

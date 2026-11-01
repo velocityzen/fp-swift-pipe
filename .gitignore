@@ -7,3 +7,6 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 .claude
+/Benchmarks/.build
+/Benchmarks/.benchmarkBaselines
+/Benchmarks/Packages

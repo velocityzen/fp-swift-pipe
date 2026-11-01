@@ -20,6 +20,7 @@ public extension Pipe {
     /// On the first `.failure`, iteration stops and that failure is returned.
     /// `@discardableResult` so this also serves as a "drive to completion" terminal
     /// when the values aren't needed.
+    @inlinable
     @discardableResult
     func toResult() async -> Result<[Success], Failure> {
         var values: [Success] = []
@@ -35,6 +36,7 @@ public extension Pipe {
     }
 
     /// Iterate the pipeline to completion and return every element. Never stops on failure.
+    @inlinable
     func toArray() async -> [Result<Success, Failure>] {
         var elements: [Result<Success, Failure>] = []
         for await element in self {
@@ -45,6 +47,7 @@ public extension Pipe {
 
     /// Return the first element produced by the pipeline (success or failure), or
     /// `nil` if the pipeline is empty.
+    @inlinable
     func first() async -> Result<Success, Failure>? {
         for await element in self {
             return element
@@ -54,6 +57,7 @@ public extension Pipe {
 
     /// Return the first successful value, skipping any leading failures.
     /// `nil` if the pipeline never emits a success.
+    @inlinable
     func firstSuccess() async -> Success? {
         for await element in self {
             if case .success(let value) = element { return value }
@@ -63,6 +67,7 @@ public extension Pipe {
 
     /// Return the first error, skipping any leading successes.
     /// `nil` if the pipeline never emits a failure.
+    @inlinable
     func firstError() async -> Failure? {
         for await element in self {
             if case .failure(let error) = element { return error }
@@ -72,6 +77,7 @@ public extension Pipe {
 
     /// Reduce the success channel into a single value, all-or-nothing.
     /// The first `.failure` short-circuits.
+    @inlinable
     func reduce<U: Sendable>(
         _ initial: U,
         _ combine: @Sendable (U, Success) -> U,

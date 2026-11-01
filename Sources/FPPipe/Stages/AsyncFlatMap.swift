@@ -6,12 +6,14 @@ import FP
 /// `concurrency` controls how many transforms run in parallel. Default 1 is strictly
 /// sequential. With `concurrency > 1` up to N closures run in flight and results emit
 /// as they complete (unordered).
+@usableFromInline
 struct AsyncFlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sendable>:
     PipeStage
 {
-    private let transform: @Sendable (Input) async -> Result<Output, Failure>
-    private let concurrency: Int
+    @usableFromInline let transform: @Sendable (Input) async -> Result<Output, Failure>
+    @usableFromInline let concurrency: Int
 
+    @inlinable
     init(
         _ transform: @escaping @Sendable (Input) async -> Result<Output, Failure>,
         concurrency: Int,
@@ -21,31 +23,44 @@ struct AsyncFlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sen
         self.concurrency = concurrency
     }
 
+    @inlinable
     func attach(_ upstream: Pipe<Input, Failure>) -> Pipe<Output, Failure> {
-        let transform = self.transform
+        let step = AsyncFlatMapStep(transform)
+        if concurrency == 1 {
+            return .iterating { .init(AsyncStepIterator(upstream.makeAsyncIterator(), step: step)) }
+        }
         let concurrency = self.concurrency
-        return .erased {
-            let source = upstream.upstream()
-            if concurrency == 1 {
-                return AnyAsyncSequence(source.flatMapAsync(transform))
-            }
-            return AnyAsyncSequence(
-                mapAsyncUnordered(
-                    source,
+        return .iterating {
+            .init(
+                upstream.compactMapAsyncUnordered(
                     concurrency: concurrency,
                     passthrough: { $0.passthroughFailure() },
-                    {
-                        (element: Result<Input, Failure>) async -> Result<Output, Failure> in
-                        await element.flatMapAsync(transform)
-                    },
-                ),
+                    { element in await step(element) },
+                )
+                .makeAsyncIterator(),
             )
         }
     }
 }
 
+@usableFromInline
+struct AsyncFlatMapStep<Input, Output, Failure: Error>: AsyncPipeStep {
+    @usableFromInline let transform: @Sendable (Input) async -> Result<Output, Failure>
+
+    @inlinable
+    init(_ transform: @escaping @Sendable (Input) async -> Result<Output, Failure>) {
+        self.transform = transform
+    }
+
+    @inlinable
+    func callAsFunction(_ element: Result<Input, Failure>) async -> Result<Output, Failure>? {
+        await element.flatMapAsync(transform)
+    }
+}
+
 /// DSL: `AsyncFlatMap { value in await fetch(value) }` or
 /// `AsyncFlatMap(concurrency: 10) { value in await fetch(value) }`.
+@inlinable
 public func AsyncFlatMap<Input: Sendable, Output: Sendable, Failure: Error & Sendable>(
     concurrency: Int = 1,
     _ transform: @escaping @Sendable (Input) async -> Result<Output, Failure>,

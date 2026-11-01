@@ -13,6 +13,7 @@ import Synchronization
 /// and tear down — a parked expansion never outlives an abandoned consumer.
 ///
 /// Supports exactly one producer: at most one `acquire()` may be suspended at a time.
+@usableFromInline
 final class BackpressureGate: Sendable {
     private struct State {
         var available: Int
@@ -22,6 +23,7 @@ final class BackpressureGate: Sendable {
 
     private let mutex: Mutex<State>
 
+    @usableFromInline
     init(capacity: Int) {
         precondition(capacity >= 1, "capacity must be at least 1")
         self.mutex = Mutex(State(available: capacity))
@@ -29,6 +31,7 @@ final class BackpressureGate: Sendable {
 
     /// Producer side: returns when a buffer slot is free, or immediately on task
     /// cancellation (no slot is taken — the caller re-checks `Task.isCancelled`).
+    @usableFromInline
     func acquire() async {
         await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -56,6 +59,7 @@ final class BackpressureGate: Sendable {
 
     /// Consumer side: one element was taken off the buffer; free its slot. If the
     /// producer is parked, the slot transfers to it directly.
+    @usableFromInline
     func release() {
         let waiter = mutex.withLock { state -> CheckedContinuation<Void, Never>? in
             if let waiter = state.waiter {
@@ -66,5 +70,22 @@ final class BackpressureGate: Sendable {
             return nil
         }
         waiter?.resume()
+    }
+}
+
+/// Frees the consumed element's slot in `gate` as the consumer takes it.
+@usableFromInline
+struct ReleaseStep<Element>: PipeStep {
+    @usableFromInline let gate: BackpressureGate
+
+    @inlinable
+    init(_ gate: BackpressureGate) {
+        self.gate = gate
+    }
+
+    @inlinable
+    func callAsFunction(_ element: Element) -> Element? {
+        gate.release()
+        return element
     }
 }

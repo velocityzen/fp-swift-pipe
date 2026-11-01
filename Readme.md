@@ -99,7 +99,7 @@ Key shapes used:
 | `TapError` / `AsyncTapError` | `(F) → Void` / `(F) async → Void` | Observe failures. |
 | `Match` / `AsyncMatch` | `onSuccess: (A) → R, onFailure: (F) → R` (and async) | Fold both channels into a single `R`; output `Failure == Never`. |
 
-`FlatMapSequence` and `FlatMapAsyncSequence` apply backpressure: the expansion runs ahead of the consumer by at most `bufferSize` elements, then suspends until the consumer catches up — a single element fanning out into a million-element `Range` never sits in memory at once. With the default of 1 the expansion stays in lockstep with the consumer; raise `bufferSize` to let it read further ahead of a bursty consumer. Breaking out of iteration tears the expansion down promptly, parked or not.
+`FlatMapSequence` and `FlatMapAsyncSequence` apply backpressure: the expansion runs ahead of the consumer by at most `bufferSize` elements, then suspends until the consumer catches up — a single element fanning out into a million-element `Range` never sits in memory at once. With the default of 1 the expansion stays in lockstep with the consumer: each inner element is produced when the consumer asks for it, in the consumer's task, with nothing buffered. Raise `bufferSize` to let a producer task read further ahead of a bursty consumer. Breaking out of iteration, or cancelling the consumer, stops the expansion promptly, parked or not.
 
 ### Sources
 
@@ -214,7 +214,7 @@ AsyncMap { url in await url |> fetchData |> decodeJSON }
 
 ## Concurrency
 
-FPPipe is **sequential by default**: every knob that lets work run ahead of the consumer defaults to 1 — `concurrency:` on the `Async*` stages (strictly sequential) and `bufferSize:` on the fan-out stages (at most one element ahead). Parallelism and prefetch are always explicit opt-ins at the call site.
+FPPipe is **sequential by default**: every knob that lets work run ahead of the consumer defaults to 1 — `concurrency:` on the `Async*` stages (strictly sequential) and `bufferSize:` on the fan-out stages (lockstep with the consumer). Parallelism and prefetch are always explicit opt-ins at the call site.
 
 Every `Async*` stage takes a `concurrency: Int = 1` parameter. With the default of 1 the stage runs strictly sequentially — element N's closure waits for N−1 to finish. With `concurrency > 1`, up to N closures run in parallel:
 
@@ -334,10 +334,16 @@ Stages are typed by what they touch:
 
 The result builder has one `buildPartialBlock` overload per shape, plus a `Never`-widening overload so non-failable sources compose naturally with failure-introducing stages without an explicit `MapError`.
 
+Sources, stages and sinks are `@inlinable`, and each stage builds its iterator from concrete types, so a pipeline compiles specialized into the module that declares it: there is no per-element allocation, and the only indirection left is one call per element from each stage to the one above it. With `concurrency: 1` the `Async*` stages, and with `bufferSize: 1` the fan-out stages, run in the consumer's task without child tasks or buffers. Allocation, ARC and timing benchmarks for every source, stage and sink live in their own package under [`Benchmarks/`](Benchmarks/README.md):
+
+```bash
+cd Benchmarks && swift package benchmark
+```
+
 ## Requirements
 
 - Swift 6.3+, Swift language mode 6
-- macOS 26+ / iOS 26+ / tvOS 26+ / watchOS 26+ / visionOS 26+ / Linux (for `Synchronization.Mutex` and fp-swift's ordered concurrency helpers)
+- macOS 26+ / iOS 26+ / tvOS 26+ / watchOS 26+ / visionOS 26+ / Linux (for `Synchronization.Mutex` and fp-swift's concurrent maps)
 - Strict concurrency: clean
 
 Every platform is exercised in CI: macOS, Ubuntu Linux, and the iOS, tvOS, watchOS, and visionOS simulators.

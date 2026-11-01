@@ -6,14 +6,16 @@ import FP
 ///
 /// `concurrency` controls how many recoveries run in parallel. Default 1 is strictly
 /// sequential. With `concurrency > 1` results emit as they complete (unordered).
+@usableFromInline
 struct AsyncFlatMapErrorStage<
     Value: Sendable,
     InputFailure: Error & Sendable,
     OutputFailure: Error & Sendable,
 >: PipeFlatErrorStage {
-    private let transform: @Sendable (InputFailure) async -> Result<Value, OutputFailure>
-    private let concurrency: Int
+    @usableFromInline let transform: @Sendable (InputFailure) async -> Result<Value, OutputFailure>
+    @usableFromInline let concurrency: Int
 
+    @inlinable
     init(
         _ transform: @escaping @Sendable (InputFailure) async -> Result<Value, OutputFailure>,
         concurrency: Int,
@@ -23,37 +25,47 @@ struct AsyncFlatMapErrorStage<
         self.concurrency = concurrency
     }
 
+    @inlinable
     func attach(_ upstream: Pipe<Value, InputFailure>) -> Pipe<Value, OutputFailure> {
-        let transform = self.transform
+        let step = AsyncFlatMapErrorStep(transform)
+        if concurrency == 1 {
+            return .iterating { .init(AsyncStepIterator(upstream.makeAsyncIterator(), step: step)) }
+        }
         let concurrency = self.concurrency
-        return .erased {
-            let source = upstream.upstream()
-            if concurrency == 1 {
-                return AnyAsyncSequence(
-                    source.map {
-                        (element: Result<Value, InputFailure>) async -> Result<Value, OutputFailure>
-                        in
-                        await element.orElseAsync(transform)
-                    },
-                )
-            }
-            return AnyAsyncSequence(
-                mapAsyncUnordered(
-                    source,
+        return .iterating {
+            .init(
+                upstream.compactMapAsyncUnordered(
                     concurrency: concurrency,
                     passthrough: { $0.passthroughSuccess() },
-                    {
-                        (element: Result<Value, InputFailure>) async -> Result<Value, OutputFailure>
-                        in
-                        await element.orElseAsync(transform)
-                    },
-                ),
+                    { element in await step(element) },
+                )
+                .makeAsyncIterator(),
             )
         }
     }
 }
 
+@usableFromInline
+struct AsyncFlatMapErrorStep<Value, InputFailure: Error, OutputFailure: Error>: AsyncPipeStep {
+    @usableFromInline let transform: @Sendable (InputFailure) async -> Result<Value, OutputFailure>
+
+    @inlinable
+    init(
+        _ transform: @escaping @Sendable (InputFailure) async -> Result<Value, OutputFailure>
+    ) {
+        self.transform = transform
+    }
+
+    @inlinable
+    func callAsFunction(
+        _ element: Result<Value, InputFailure>
+    ) async -> Result<Value, OutputFailure>? {
+        await element.orElseAsync(transform)
+    }
+}
+
 /// DSL: `AsyncFlatMapError { (e: NetError) async -> Result<Item, AppError> in … }`.
+@inlinable
 public func AsyncFlatMapError<
     Value: Sendable,
     InputFailure: Error & Sendable,

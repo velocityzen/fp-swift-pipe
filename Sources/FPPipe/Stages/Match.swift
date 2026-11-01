@@ -3,12 +3,14 @@ import FP
 /// Folds each `Result` element into a single `Output` type by handling both success
 /// and failure cases. Output pipeline cannot fail (`Failure == Never`).
 /// Mirrors fp-swift's `Result.match`.
+@usableFromInline
 struct MatchStage<Input: Sendable, Output: Sendable, InputFailure: Error & Sendable>:
     PipeFoldStage
 {
-    private let onSuccess: @Sendable (Input) -> Output
-    private let onFailure: @Sendable (InputFailure) -> Output
+    @usableFromInline let onSuccess: @Sendable (Input) -> Output
+    @usableFromInline let onFailure: @Sendable (InputFailure) -> Output
 
+    @inlinable
     init(
         onSuccess: @escaping @Sendable (Input) -> Output,
         onFailure: @escaping @Sendable (InputFailure) -> Output,
@@ -17,17 +19,30 @@ struct MatchStage<Input: Sendable, Output: Sendable, InputFailure: Error & Senda
         self.onFailure = onFailure
     }
 
+    @inlinable
     func attach(_ upstream: Pipe<Input, InputFailure>) -> Pipe<Output, Never> {
-        let onSuccess = self.onSuccess
-        let onFailure = self.onFailure
-        return .erased {
-            AnyAsyncSequence(
-                upstream.upstream().map {
-                    (element: Result<Input, InputFailure>) -> Result<Output, Never> in
-                    .success(element.match(onSuccess, onFailure))
-                },
-            )
-        }
+        let step = MatchStep(onSuccess: onSuccess, onFailure: onFailure)
+        return .iterating { .init(StepIterator(upstream.makeAsyncIterator(), step: step)) }
+    }
+}
+
+@usableFromInline
+struct MatchStep<Input, Output, InputFailure: Error>: PipeStep {
+    @usableFromInline let onSuccess: @Sendable (Input) -> Output
+    @usableFromInline let onFailure: @Sendable (InputFailure) -> Output
+
+    @inlinable
+    init(
+        onSuccess: @escaping @Sendable (Input) -> Output,
+        onFailure: @escaping @Sendable (InputFailure) -> Output,
+    ) {
+        self.onSuccess = onSuccess
+        self.onFailure = onFailure
+    }
+
+    @inlinable
+    func callAsFunction(_ element: Result<Input, InputFailure>) -> Result<Output, Never>? {
+        .success(element.match(onSuccess, onFailure))
     }
 }
 
@@ -36,6 +51,7 @@ struct MatchStage<Input: Sendable, Output: Sendable, InputFailure: Error & Senda
 /// Both sides must be closures — autoclosure-default variants don't work as
 /// builder stages because the factory can't infer `Input` / `InputFailure` from
 /// non-closure arguments alone.
+@inlinable
 public func Match<Input: Sendable, Output: Sendable, InputFailure: Error & Sendable>(
     onSuccess: @escaping @Sendable (Input) -> Output,
     onFailure: @escaping @Sendable (InputFailure) -> Output,

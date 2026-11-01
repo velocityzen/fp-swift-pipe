@@ -15,9 +15,15 @@
 /// ```
 public struct OpenPipe<Input: Sendable, Success: Sendable, Failure: Error & Sendable>: Sendable {
     /// Apply the accumulated stages to a starter pipe — set by `PipeBuilder`.
-    let apply: @Sendable (Pipe<Input, Never>) -> Pipe<Success, Failure>
+    @usableFromInline let apply: @Sendable (Pipe<Input, Never>) -> Pipe<Success, Failure>
+
+    @inlinable
+    init(apply: @escaping @Sendable (Pipe<Input, Never>) -> Pipe<Success, Failure>) {
+        self.apply = apply
+    }
 
     /// Apply the open pipe to an `AsyncSequence`, returning a regular `Pipe` ready to iterate.
+    @inlinable
     public func callAsFunction<S: AsyncSequence & Sendable>(
         _ source: S,
     ) -> Pipe<Success, Failure> where S.Element == Input, S.Failure == Never {
@@ -25,6 +31,7 @@ public struct OpenPipe<Input: Sendable, Success: Sendable, Failure: Error & Send
     }
 
     /// Apply the open pipe to a synchronous `Sequence`, returning a regular `Pipe`.
+    @inlinable
     public func callAsFunction<S: Sequence & Sendable>(
         _ source: S,
     ) -> Pipe<Success, Failure> where S.Element == Input {
@@ -34,6 +41,7 @@ public struct OpenPipe<Input: Sendable, Success: Sendable, Failure: Error & Send
 
 public extension OpenPipe {
     /// Build an open pipeline from a `From<Input>()` marker followed by stages.
+    @inlinable
     init(@PipeBuilder _ build: () -> OpenPipe<Input, Success, Failure>) {
         self = build()
     }
@@ -42,6 +50,7 @@ public extension OpenPipe {
 /// Marker source for an "open" pipeline — a hole at the source position that
 /// `OpenPipe.callAsFunction` later fills with a real `Sequence` / `AsyncSequence`.
 public struct OpenSource<Input: Sendable>: Sendable {
+    @inlinable
     public init() {}
 }
 
@@ -51,5 +60,6 @@ public struct OpenSource<Input: Sendable>: Sendable {
 /// failure channel — `pipe(stream)` returns `Pipe<…, E>`, and stages downstream see
 /// the unwrapped successes / propagated failures.
 public struct OpenResultSource<Value: Sendable, Failure: Error & Sendable>: Sendable {
+    @inlinable
     public init() {}
 }

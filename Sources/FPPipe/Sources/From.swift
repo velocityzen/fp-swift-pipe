@@ -1,57 +1,66 @@
 /// A source backed by an `AsyncSequence` whose elements are already `Result`s.
+@usableFromInline
 struct ResultAsyncSequenceSource<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>:
     PipeSource
 where S.Element == Result<V, E>, S.Failure == Never {
-    typealias Output = V
-    typealias Failure = E
+    @usableFromInline typealias Output = V
+    @usableFromInline typealias Failure = E
 
-    private let make: @Sendable () -> S
+    @usableFromInline let make: @Sendable () -> S
 
+    @inlinable
     init(_ make: @escaping @Sendable () -> S) {
         self.make = make
     }
 
+    @inlinable
     func produce() -> Pipe<V, E> {
         let make = self.make
-        return .erased { AnyAsyncSequence(make()) }
+        return .iterating { .init(make().makeAsyncIterator()) }
     }
 }
 
 /// A source backed by an `AsyncSequence` of bare values; each value is lifted into `.success`
 /// in a single iterator hop (no intermediate `AsyncMapSequence`).
+@usableFromInline
 struct LiftedAsyncSequenceSource<S: AsyncSequence & Sendable>: PipeSource
 where S.Element: Sendable, S.Failure == Never {
-    typealias Output = S.Element
-    typealias Failure = Never
+    @usableFromInline typealias Output = S.Element
+    @usableFromInline typealias Failure = Never
 
-    private let make: @Sendable () -> S
+    @usableFromInline let make: @Sendable () -> S
 
+    @inlinable
     init(_ make: @escaping @Sendable () -> S) {
         self.make = make
     }
 
+    @inlinable
     func produce() -> Pipe<S.Element, Never> {
         let make = self.make
-        return .erased { AnyAsyncSequence(LiftingAsyncSequence(make())) }
+        return .iterating { .init(LiftingAsyncIterator(make().makeAsyncIterator())) }
     }
 }
 
 /// A source backed by a synchronous `Sequence`; each value is lifted into `.success`
 /// in a single iterator hop (no `AsyncSyncSequence` + `AsyncMapSequence` double-bridging).
+@usableFromInline
 struct SyncSequenceSource<S: Sequence & Sendable>: PipeSource
 where S.Element: Sendable {
-    typealias Output = S.Element
-    typealias Failure = Never
+    @usableFromInline typealias Output = S.Element
+    @usableFromInline typealias Failure = Never
 
-    private let make: @Sendable () -> S
+    @usableFromInline let make: @Sendable () -> S
 
+    @inlinable
     init(_ make: @escaping @Sendable () -> S) {
         self.make = make
     }
 
+    @inlinable
     func produce() -> Pipe<S.Element, Never> {
         let make = self.make
-        return .erased { AnyAsyncSequence(LiftingSyncSequence(make())) }
+        return .iterating { .init(LiftingSyncIterator(make().makeIterator())) }
     }
 }
 
@@ -76,6 +85,7 @@ where S.Element: Sendable {
 /// ```
 ///
 /// `Array`, `Range`, and other replayable sources work fine with `From`.
+@inlinable
 public func From<S: AsyncSequence & Sendable>(
     _ source: @autoclosure @escaping @Sendable () -> S,
 ) -> some PipeSource<S.Element, Never> where S.Element: Sendable, S.Failure == Never {
@@ -83,6 +93,7 @@ public func From<S: AsyncSequence & Sendable>(
 }
 
 /// Lift an `AsyncSequence` of `Result` elements into a pipeline source.
+@inlinable
 public func FromResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>(
     _ source: @autoclosure @escaping @Sendable () -> S,
 ) -> some PipeSource<V, E> where S.Element == Result<V, E>, S.Failure == Never {
@@ -90,6 +101,7 @@ public func FromResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Send
 }
 
 /// Lift a synchronous `Sequence` into a pipeline source.
+@inlinable
 public func From<S: Sequence & Sendable>(
     _ source: @autoclosure @escaping @Sendable () -> S,
 ) -> some PipeSource<S.Element, Never> where S.Element: Sendable {
@@ -99,6 +111,7 @@ public func From<S: Sequence & Sendable>(
 /// Open-source marker — declares an `Input` type to be supplied at call time. The enclosing
 /// `OpenPipe { … }` builder produces an `OpenPipe<Input, …, …>` that's callable as
 /// `pipe(source)`.
+@inlinable
 public func From<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
     OpenSource<Input>()
 }
@@ -107,6 +120,7 @@ public func From<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
 /// to be supplied at call time as an `AsyncSequence<Result<V, E>>` (or `Sequence`). The
 /// enclosing `OpenPipe { … }` builder produces an `OpenPipe<Result<V, E>, V, E>` whose
 /// downstream stages see unwrapped successes and failures lifted into the channel.
+@inlinable
 public func FromResult<V: Sendable, E: Error & Sendable>(
     _: V.Type,
     _: E.Type,
@@ -119,6 +133,7 @@ public func FromResult<V: Sendable, E: Error & Sendable>(
 /// Defer construction of an `AsyncSequence` source until the pipeline is iterated.
 /// Each iteration invokes the closure afresh — useful for sources that aren't
 /// re-iterable (e.g. an `AsyncStream` you build from a fresh continuation).
+@inlinable
 public func Defer<S: AsyncSequence & Sendable>(
     _ make: @escaping @Sendable () -> S,
 ) -> some PipeSource<S.Element, Never> where S.Element: Sendable, S.Failure == Never {
@@ -126,6 +141,7 @@ public func Defer<S: AsyncSequence & Sendable>(
 }
 
 /// Deferred form of `FromResult` for `Result`-bearing sequences.
+@inlinable
 public func DeferResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>(
     _ make: @escaping @Sendable () -> S,
 ) -> some PipeSource<V, E> where S.Element == Result<V, E>, S.Failure == Never {
@@ -133,6 +149,7 @@ public func DeferResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sen
 }
 
 /// Deferred form of `From` for synchronous sequences.
+@inlinable
 public func Defer<S: Sequence & Sendable>(
     _ make: @escaping @Sendable () -> S,
 ) -> some PipeSource<S.Element, Never> where S.Element: Sendable {
@@ -141,59 +158,49 @@ public func Defer<S: Sequence & Sendable>(
 
 // MARK: - Internal lifting bridges
 
-/// Wraps a synchronous `Sequence` and yields `Result.success(element)` per iteration.
-/// One iterator hop instead of `AsyncSyncSequence + AsyncMapSequence` (~150 ns/elem saving
-/// in debug; smaller in release).
-struct LiftingSyncSequence<Base: Sequence & Sendable>: AsyncSequence
-where Base.Element: Sendable {
-    typealias Element = Result<Base.Element, Never>
+/// Reads a synchronous `Sequence` and yields `Result.success(element)` per element.
+@usableFromInline
+struct LiftingSyncIterator<Base: IteratorProtocol>: AsyncIteratorProtocol {
+    @usableFromInline var base: Base
 
-    let base: Base
+    @inlinable
     init(_ base: Base) {
         self.base = base
     }
 
-    func makeAsyncIterator() -> Iterator {
-        Iterator(base.makeIterator())
+    @inlinable
+    mutating func next() async -> Result<Base.Element, Never>? {
+        base.next().map(Result.success)
     }
 
-    struct Iterator: AsyncIteratorProtocol {
-        var iterator: Base.Iterator
-        init(_ iterator: Base.Iterator) {
-            self.iterator = iterator
-        }
-
-        mutating func next() async -> Result<Base.Element, Never>? {
-            iterator.next().map(Result.success)
-        }
+    @inlinable
+    mutating func next(isolation actor: isolated (any Actor)?) async -> Result<Base.Element, Never>?
+    {
+        base.next().map(Result.success)
     }
 }
 
-/// Wraps an `AsyncSequence` and yields `Result.success(element)` per iteration, in a
-/// single hop instead of going through `AsyncMapSequence`.
-struct LiftingAsyncSequence<Base: AsyncSequence & Sendable>: AsyncSequence
-where Base.Element: Sendable, Base.Failure == Never {
-    typealias Element = Result<Base.Element, Never>
+/// Reads an `AsyncSequence` and yields `Result.success(element)` per element.
+@usableFromInline
+struct LiftingAsyncIterator<Base: AsyncIteratorProtocol>: AsyncIteratorProtocol
+where Base.Failure == Never {
+    @usableFromInline var base: Base
 
-    let base: Base
+    @inlinable
     init(_ base: Base) {
         self.base = base
     }
 
-    func makeAsyncIterator() -> Iterator {
-        Iterator(base.makeAsyncIterator())
+    @inlinable
+    mutating func next() async -> Result<Base.Element, Never>? {
+        await next(isolation: #isolation)
     }
 
-    struct Iterator: AsyncIteratorProtocol {
-        var iterator: Base.AsyncIterator
-        init(_ iterator: Base.AsyncIterator) {
-            self.iterator = iterator
-        }
-
-        mutating func next() async -> Result<Base.Element, Never>? {
-            // Stays on the caller's isolation; `Base.Failure == Never` makes it non-throwing.
-            guard let element = await iterator.next(isolation: #isolation) else { return nil }
-            return .success(element)
-        }
+    @inlinable
+    mutating func next(isolation actor: isolated (any Actor)?) async -> Result<Base.Element, Never>?
+    {
+        // Stays on the caller's isolation; `Base.Failure == Never` makes it non-throwing.
+        guard let element = await base.next(isolation: actor) else { return nil }
+        return .success(element)
     }
 }

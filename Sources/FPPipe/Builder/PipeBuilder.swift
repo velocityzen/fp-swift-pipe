@@ -26,6 +26,7 @@
 public enum PipeBuilder {
     // MARK: - First step (the source)
 
+    @inlinable
     public static func buildPartialBlock<S: PipeSource>(
         first source: S,
     ) -> Pipe<S.Output, S.Failure> {
@@ -34,6 +35,7 @@ public enum PipeBuilder {
 
     // MARK: - Subsequent steps (stages)
 
+    @inlinable
     public static func buildPartialBlock<U: Sendable, St: PipeStage>(
         accumulated: Pipe<U, St.Failure>,
         next stage: St,
@@ -41,6 +43,7 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<U: Sendable, F: Error & Sendable, St: PipePolyStage>(
         accumulated: Pipe<U, F>,
         next stage: St,
@@ -48,6 +51,7 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<V: Sendable, St: PipePolyValueStage>(
         accumulated: Pipe<V, St.InputFailure>,
         next stage: St,
@@ -55,6 +59,7 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<
         V: Sendable,
         F: Error & Sendable,
@@ -65,6 +70,7 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<St: PipeFlatErrorStage>(
         accumulated: Pipe<St.Value, St.InputFailure>,
         next stage: St,
@@ -72,6 +78,7 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<St: PipeFoldStage>(
         accumulated: Pipe<St.Input, St.InputFailure>,
         next stage: St,
@@ -82,6 +89,7 @@ public enum PipeBuilder {
     /// Widening overload: when the upstream cannot fail (`Failure == Never`), allow
     /// attaching a failure-fixed stage by lifting the failure channel into `St.Failure`.
     /// This makes `From([…]) → FlatMap { … }` work without an explicit `MapError` step.
+    @inlinable
     public static func buildPartialBlock<U: Sendable, St: PipeStage>(
         accumulated: Pipe<U, Never>,
         next stage: St,
@@ -90,6 +98,7 @@ public enum PipeBuilder {
     }
 
     /// Widening overload for value-polymorphic failure-transforming stages (e.g. `MapError`).
+    @inlinable
     public static func buildPartialBlock<V: Sendable, St: PipePolyValueStage>(
         accumulated: Pipe<V, Never>,
         next stage: St,
@@ -97,12 +106,16 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+}
+
+extension PipeBuilder {
     // MARK: - Open-pipe variants
     //
     // These mirror the closed-pipe overloads but accumulate an `OpenPipe` whose
     // source slot is filled later by `OpenPipe.callAsFunction(_:)`. Each overload
     // composes the new stage into the accumulated function.
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable>(
         first: OpenSource<I>,
     ) -> OpenPipe<I, I, Never> {
@@ -111,23 +124,18 @@ public enum PipeBuilder {
 
     /// Result-bearing open source: callers will supply an `AsyncSequence<Result<V, E>>`,
     /// and the inner `Result`s lift into the channel so downstream sees `Pipe<V, E>`.
+    @inlinable
     public static func buildPartialBlock<V: Sendable, E: Error & Sendable>(
         first: OpenResultSource<V, E>,
     ) -> OpenPipe<Result<V, E>, V, E> {
         OpenPipe(apply: { lifted in
-            Pipe<V, E>.erased {
-                AnyAsyncSequence(
-                    lifted.upstream().map {
-                        (wrapped: Result<Result<V, E>, Never>) -> Result<V, E> in
-                        switch wrapped {
-                            case .success(let inner): return inner
-                        }
-                    },
-                )
+            Pipe<V, E>.iterating {
+                .init(StepIterator(lifted.makeAsyncIterator(), step: UnwrapResultStep<V, E>()))
             }
         })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
         accumulated: OpenPipe<I, U, St.Failure>,
         next stage: St,
@@ -135,6 +143,7 @@ public enum PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
+    @inlinable
     public static func buildPartialBlock<
         I: Sendable,
         U: Sendable,
@@ -147,6 +156,7 @@ public enum PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
         accumulated: OpenPipe<I, V, St.InputFailure>,
         next stage: St,
@@ -154,6 +164,7 @@ public enum PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, V: Sendable, F: Error & Sendable>(
         accumulated: OpenPipe<I, V, F>,
         next stage: some PipeForwardingStage,
@@ -161,6 +172,7 @@ public enum PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, St: PipeFlatErrorStage>(
         accumulated: OpenPipe<I, St.Value, St.InputFailure>,
         next stage: St,
@@ -168,6 +180,7 @@ public enum PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, St: PipeFoldStage>(
         accumulated: OpenPipe<I, St.Input, St.InputFailure>,
         next stage: St,
@@ -176,6 +189,7 @@ public enum PipeBuilder {
     }
 
     /// Widening overload (open-pipe form): non-failable upstream → failure-fixed stage.
+    @inlinable
     public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
         accumulated: OpenPipe<I, U, Never>,
         next stage: St,
@@ -184,6 +198,7 @@ public enum PipeBuilder {
     }
 
     /// Widening overload (open-pipe form): non-failable upstream → value-poly failure stage.
+    @inlinable
     public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
         accumulated: OpenPipe<I, V, Never>,
         next stage: St,
@@ -197,11 +212,17 @@ public enum PipeBuilder {
     // builder. When such a body is a single stage (no source), we pass the stage through
     // unchanged. The stage is then applied by the outer accumulator's `buildPartialBlock`.
 
+    @inlinable
     public static func buildPartialBlock<St: PipeStage>(first stage: St) -> St { stage }
+    @inlinable
     public static func buildPartialBlock<St: PipePolyStage>(first stage: St) -> St { stage }
+    @inlinable
     public static func buildPartialBlock<St: PipePolyValueStage>(first stage: St) -> St { stage }
+    @inlinable
     public static func buildPartialBlock<St: PipeForwardingStage>(first stage: St) -> St { stage }
+    @inlinable
     public static func buildPartialBlock<St: PipeFlatErrorStage>(first stage: St) -> St { stage }
+    @inlinable
     public static func buildPartialBlock<St: PipeFoldStage>(first stage: St) -> St { stage }
 
     // MARK: - Conditional composition (`if/else`, `switch`)
@@ -210,7 +231,9 @@ public enum PipeBuilder {
     // the same stage shape with the same Input/Output/Failure. Mixing stage protocols
     // (e.g. Map in one branch, Filter in another) won't unify — Swift catches this.
 
+    @inlinable
     public static func buildEither<C>(first component: C) -> C { component }
+    @inlinable
     public static func buildEither<C>(second component: C) -> C { component }
 
     // MARK: - Optional composition (`if` without `else`)
@@ -220,10 +243,12 @@ public enum PipeBuilder {
     // Only type-preserving stages are allowed — otherwise the absent case couldn't yield
     // the same Pipe type as the present case.
 
+    @inlinable
     public static func buildOptional<St>(_ component: St?) -> OptionalStage<St> {
         OptionalStage(stage: component)
     }
 
+    @inlinable
     public static func buildPartialBlock<V: Sendable, F: Error & Sendable, St: PipeForwardingStage>(
         accumulated: Pipe<V, F>,
         next optional: OptionalStage<St>,
@@ -232,6 +257,7 @@ public enum PipeBuilder {
         return stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<U: Sendable, F: Error & Sendable, St: PipePolyStage>(
         accumulated: Pipe<U, F>,
         next optional: OptionalStage<St>,
@@ -240,6 +266,7 @@ public enum PipeBuilder {
         return stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<V: Sendable, St: PipePolyValueStage>(
         accumulated: Pipe<V, St.InputFailure>,
         next optional: OptionalStage<St>,
@@ -248,6 +275,7 @@ public enum PipeBuilder {
         return stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<U: Sendable, St: PipeStage>(
         accumulated: Pipe<U, St.Failure>,
         next optional: OptionalStage<St>,
@@ -256,6 +284,7 @@ public enum PipeBuilder {
         return stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<St: PipeFlatErrorStage>(
         accumulated: Pipe<St.Value, St.InputFailure>,
         next optional: OptionalStage<St>,
@@ -264,6 +293,7 @@ public enum PipeBuilder {
         return stage.attach(accumulated)
     }
 
+    @inlinable
     public static func buildPartialBlock<
         I: Sendable,
         V: Sendable,
@@ -280,6 +310,7 @@ public enum PipeBuilder {
         })
     }
 
+    @inlinable
     public static func buildPartialBlock<
         I: Sendable,
         U: Sendable,
@@ -296,6 +327,7 @@ public enum PipeBuilder {
         })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
         accumulated: OpenPipe<I, V, St.InputFailure>,
         next optional: OptionalStage<St>,
@@ -307,6 +339,7 @@ public enum PipeBuilder {
         })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
         accumulated: OpenPipe<I, U, St.Failure>,
         next optional: OptionalStage<St>,
@@ -318,6 +351,7 @@ public enum PipeBuilder {
         })
     }
 
+    @inlinable
     public static func buildPartialBlock<I: Sendable, St: PipeFlatErrorStage>(
         accumulated: OpenPipe<I, St.Value, St.InputFailure>,
         next optional: OptionalStage<St>,
@@ -340,13 +374,34 @@ public enum PipeBuilder {
 /// "optional stage" position. Only type-preserving stages can be optional, since the
 /// absent case must yield the same Pipe type as the present case.
 public struct OptionalStage<St>: Sendable where St: Sendable {
-    let stage: St?
+    @usableFromInline let stage: St?
+
+    @inlinable
+    init(stage: St?) {
+        self.stage = stage
+    }
+}
+
+/// Unwraps the `Result` elements an `OpenResultSource` pipe was called with into the
+/// pipe's own channels.
+@usableFromInline
+struct UnwrapResultStep<V, E: Error>: PipeStep {
+    @inlinable
+    init() {}
+
+    @inlinable
+    func callAsFunction(_ element: Result<Result<V, E>, Never>) -> Result<V, E>? {
+        switch element {
+            case .success(let inner): inner
+        }
+    }
 }
 
 // MARK: - Pipe initializer
 
 public extension Pipe {
     /// Build a pipeline from a sequence of a source and stages.
+    @inlinable
     init(@PipeBuilder _ build: () -> Pipe<Success, Failure>) {
         self = build()
     }

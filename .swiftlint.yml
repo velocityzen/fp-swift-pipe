@@ -6,8 +6,12 @@
 # Where SwiftLint should NOT look.
 excluded:
   - .build
+  - Packages
   - Package.swift
   - Sources/FPPipe/FPPipe.docc
+  - Benchmarks/.build
+  - Benchmarks/Packages
+  - Benchmarks/Package.swift
 
 # Disable rules that fight the DSL conventions.
 # The DSL exposes UpperCamelCase factory functions (`Map`, `Filter`, `From`, …) — that's
