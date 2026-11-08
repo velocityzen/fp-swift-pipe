@@ -8,7 +8,7 @@ Every benchmark records wall clock and CPU time, instructions, malloc count and 
 
 | Target | Covers |
 | --- | --- |
-| `StageBenchmarks` | `From`, the synchronous value stages (`Map`, `Filter`, `CompactMap`, `FlatMap`, `Tap`, `Take`, `Drop`), a ten-stage chain, and the failure stages (`FromResult`, `MapError`, `TapError`, `FlatMapError`, `GetOrElse`, `Alt`, `Match`) |
+| `StageBenchmarks` | `From`, the synchronous value stages (`Map`, `Filter`, `CompactMap`, `FlatMap`, `Tap`, `Take`, `Drop`), a ten-stage chain, the failure stages (`FromResult`, `MapError`, `TapError`, `FlatMapError`, `GetOrElse`, `Alt`, `Match`), and the pattern-matching stages (`Match (pattern)`, `MatchError`, `TapMatch`, `TapMatchError`, plus its dynamic-cast form) |
 | `AsyncStageBenchmarks` | the `Async*` stages, sequential and at `concurrency: 8`, and `FlatMapSequence` / `FlatMapAsyncSequence` at several `bufferSize`s |
 | `PipeBenchmarks` | the sources (`From` over an array or an async sequence, `FromAsync`, `OpenPipe`), the sinks (`toResult`, `toArray`, `reduce`), and the fixed cost of a short run |
 

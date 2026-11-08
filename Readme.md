@@ -97,7 +97,11 @@ Key shapes used:
 | `GetOrElse` / `AsyncGetOrElse` | `(F) → A` / `(F) async → A` | Collapse failures to a `Success`; output pipeline cannot fail (`Failure == Never`). |
 | `Tap` / `AsyncTap` | `(A) → Void` / `(A) async → Void` | Observe successes. |
 | `TapError` / `AsyncTapError` | `(F) → Void` / `(F) async → Void` | Observe failures. |
-| `Match` / `AsyncMatch` | `onSuccess: (A) → R, onFailure: (F) → R` (and async) | Fold both channels into a single `R`; output `Failure == Never`. |
+| `Match` / `AsyncMatch` (fold) | `onSuccess: (A) → R, onFailure: (F) → R` (and async) | Fold both channels into a single `R`; output `Failure == Never`. |
+| `Match` / `AsyncMatch` (pattern) | `(pattern) { … } → Result<A, F>` | `switch` over successes: replace only the ones a [pattern](#pattern-matching) matches; everything else passes through. |
+| `MatchError` / `AsyncMatchError` | `(pattern) { … } → Result<A, F>` | `switch` over failures: recover or re-fail only the ones a pattern matches. |
+| `TapMatch` / `AsyncTapMatch` | `(pattern) { … } → Void` | Observe only the successes a pattern matches. |
+| `TapMatchError` / `AsyncTapMatchError` | `(pattern) { … } → Void` | Observe only the failures a pattern matches. |
 
 `FlatMapSequence` and `FlatMapAsyncSequence` apply backpressure: the expansion runs ahead of the consumer by at most `bufferSize` elements, then suspends until the consumer catches up — a single element fanning out into a million-element `Range` never sits in memory at once. With the default of 1 the expansion stays in lockstep with the consumer: each inner element is produced when the consumer asks for it, in the consumer's task, with nothing buffered. Raise `bufferSize` to let a producer task read further ahead of a bursty consumer. Breaking out of iteration, or cancelling the consumer, stops the expansion promptly, parked or not.
 
@@ -148,6 +152,62 @@ Pipe<Item, AppError> {
 ```
 
 Each comes with an `Async*` variant (`AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse`) for cache lookups, retries, or any other async fallback.
+
+To handle only *some* failures, reach for [`MatchError`](#pattern-matching) instead of a `FlatMapError` whose `switch` re-fails everything else.
+
+### Pattern matching
+
+Four stage families act only on the elements a pattern picks out — a `switch` over the stream, one case per stage. Everything the pattern doesn't match passes through untouched, so value and failure types never change.
+
+| Stage | Matches | Handler returns |
+|---|---|---|
+| `Match` / `AsyncMatch` | successes | `Result<A, F>` — swap the value with `.success`, turn it into a failure with `.failure` |
+| `MatchError` / `AsyncMatchError` | failures | `Result<A, F>` — recover with `.success`, re-fail with `.failure` |
+| `TapMatch` / `AsyncTapMatch` | successes | `Void` — side effect; the element passes through |
+| `TapMatchError` / `AsyncTapMatchError` | failures | `Void` — side effect; the element passes through |
+
+Every stage takes the pattern in one of four forms, followed by its handler — usually a trailing closure, or `then:` when the pattern is a closure too:
+
+```swift
+// 1. An Equatable value. The handler takes no arguments — you already know what matched.
+MatchError(AppError.rateLimited) { .success(Article.placeholder) }
+TapMatch(Event.logout) { session.clear() }
+
+// 2. A type. Matches by dynamic cast and hands the handler the downcast value —
+//    made for `any Error` channels and protocol-typed values.
+TapMatchError(URLError.self) { error in log(error.code) }
+TapMatch(Dog.self) { dog in print(dog.name) }
+
+// 3. A predicate (`where:`): a `(Value) -> Bool` closure or a Bool key path.
+TapMatchError(where: \AppError.isRetryable) { error in metrics.retryable(error) }
+TapMatch(where: { (order: Order) in order.total > 1_000 }, then: { order in review(order) })
+
+// 4. A payload extractor (`extract:`): returns the payload for a match, nil otherwise.
+//    Typically one enum case with its associated value, often via a key path.
+TapMatch(extract: \Event.loggedInUser) { user in audit(user) }
+MatchError(
+    extract: { (e: AppError) in if case .http(let code) = e { code } else { nil } },
+    then: { code in .success(Page.error(code)) }
+)
+```
+
+Stack them to write the arms of a `switch`:
+
+```swift
+Pipe<Response, AppError> {
+    From(requests)
+    AsyncFlatMap { request in await send(request) }
+    Match(Response.unauthorized) { .failure(AppError.auth) }
+    MatchError(AppError.rateLimited) { .success(Response.empty) }
+    TapMatchError(where: \AppError.isFatal) { error in alert(error) }
+}
+```
+
+`Match(pattern) { … }` and the fold `Match(onSuccess:onFailure:)` share a name but not a job: the fold turns *every* element of both channels into a new type, the pattern form replaces only what it matches.
+
+As with `FlatMap`, each stage infers its types from its own arguments, not from the stages around it. A pattern names the type it matches — the value type for `Match`, the failure type for `MatchError` — except the type form, whose `T.self` only says what to cast to. The handler has to name the rest: `.failure(AppError.auth)` names the failure type and `.success(Article.placeholder)` the value type, but a bare `.success(x)` names neither, so annotate the handler there and in the type form: `MatchError(URLError.self) { e -> Result<Data, any Error> in … }`.
+
+`AsyncMatch` and `AsyncMatchError` take `concurrency:` (see [Concurrency](#concurrency)). The pattern itself is always synchronous and runs once per element as it is read; only matching elements reach a worker. `AsyncTapMatch` and `AsyncTapMatchError` run sequentially, like `AsyncTap`.
 
 ## Open pipes
 
@@ -237,7 +297,7 @@ With `concurrency > 1` every `Async*` stage applies backpressure: an element hol
 
 With `concurrency: 1` (the default) a stage's closure runs inline in the consumer's task and, because FPPipe adopts `NonisolatedNonsendingByDefault`, on the consumer's actor. With `concurrency > 1` closures run in child tasks, off the caller's actor.
 
-`AsyncTap` / `AsyncTapError` deliberately have no `concurrency:` parameter — observation stages run sequentially to keep side-effect ordering predictable.
+`AsyncTap` / `AsyncTapError` / `AsyncTapMatch` / `AsyncTapMatchError` deliberately have no `concurrency:` parameter — observation stages run sequentially to keep side-effect ordering predictable.
 
 ### Cancellation
 
@@ -267,7 +327,7 @@ let pipe = Pipe<Int, Never> {
 }
 ```
 
-`if` without `else` works for **type-preserving stages only** — `Take`, `Drop`, `Tap`, `TapError`, `AsyncTap`, `AsyncTapError`, any `Filter`/`Map`/`AsyncFilter`/`AsyncMap` whose Input equals Output, any `FlatMap`/`AsyncFlatMap` from `A` to `Result<A, F>`, and `Alt`/`AsyncAlt`/`FlatMapError`/`AsyncFlatMapError` that keep the failure type. The "absent" branch must yield the same Pipe type as the "present" branch, which forces the stage not to change types.
+`if` without `else` works for **type-preserving stages only** — `Take`, `Drop`, `Tap`, `TapError`, `AsyncTap`, `AsyncTapError`, every [pattern-matching](#pattern-matching) stage (`Match(pattern)`, `MatchError`, `TapMatch`, `TapMatchError` and their `Async*` twins), any `Filter`/`Map`/`AsyncFilter`/`AsyncMap` whose Input equals Output, any `FlatMap`/`AsyncFlatMap` from `A` to `Result<A, F>`, and `Alt`/`AsyncAlt`/`FlatMapError`/`AsyncFlatMapError` that keep the failure type. The "absent" branch must yield the same Pipe type as the "present" branch, which forces the stage not to change types.
 
 ```swift
 let pipe = Pipe<Int, Never> {
@@ -325,11 +385,11 @@ Stages are typed by what they touch:
 
 | Protocol | Value | Failure | Examples |
 |---|---|---|---|
-| `PipeStage` | bound | bound | `FlatMap`, `AsyncFlatMap` |
-| `PipePolyStage` | bound | poly | `Map`, `Tap`, `Filter` |
-| `PipePolyValueStage` | poly | bound | `MapError`, `TapError` |
-| `PipeForwardingStage` | poly | poly | `Take`, `Drop` |
-| `PipeFlatErrorStage` | bound | bound (in/out) | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `OrElse`, `GetOrElse` |
+| `PipeStage` | bound | bound | `FlatMap`, `AsyncFlatMap`, `Match(pattern)` |
+| `PipePolyStage` | bound | poly | `Map`, `Tap`, `Filter`, `TapMatch` |
+| `PipePolyValueStage` | poly | bound | `MapError`, `TapError`, `TapMatchError` |
+| `PipeForwardingStage` | poly | poly | `Take`, `Drop`, `TapMatch(T.self)`, `TapMatchError(E.self)` |
+| `PipeFlatErrorStage` | bound | bound (in/out) | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `OrElse`, `GetOrElse`, `MatchError` |
 | `PipeFoldStage` | A → R | `F` → `Never` | `Match`, `AsyncMatch` (fold both channels) |
 
 The result builder has one `buildPartialBlock` overload per shape, plus a `Never`-widening overload so non-failable sources compose naturally with failure-introducing stages without an explicit `MapError`.

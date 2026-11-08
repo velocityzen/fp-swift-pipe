@@ -117,6 +117,38 @@ func cancellingOuterTaskShortCircuitsAsyncFlatMap() async {
     #expect(totalCompleted <= 6, "completed \(totalCompleted) — flat-map in-flight didn't bail")
 }
 
+@Test
+func cancellingOuterTaskShortCircuitsAsyncMatchError() async {
+    let started = Mutex<Int>(0)
+    let completed = Mutex<Int>(0)
+    let pipe = Pipe<Int, E> {
+        From(0..<1_000)
+        FlatMap { (_: Int) -> Result<Int, E> in .failure(.bad) }
+        AsyncMatchError(E.bad, concurrency: 4) { () async -> Result<Int, E> in
+            started.withLock { $0 += 1 }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            if Task.isCancelled { return .success(-1) }
+            completed.withLock { $0 += 1 }
+            return .success(0)
+        }
+    }
+
+    let task = Task {
+        var emitted = 0
+        for await _ in pipe {
+            emitted += 1
+            if emitted == 2 { break }
+        }
+        return emitted
+    }
+    _ = await task.value
+
+    let totalStarted = started.withLock { $0 }
+    let totalCompleted = completed.withLock { $0 }
+    #expect(totalStarted <= 8, "started \(totalStarted) — match pipeline kept priming after cancel")
+    #expect(totalCompleted <= 6, "completed \(totalCompleted) — match in-flight didn't bail")
+}
+
 // MARK: - Time-bounded cancellation
 //
 // Stronger guarantee: the consumer never waits longer than the slowest cooperative

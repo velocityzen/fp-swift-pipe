@@ -85,6 +85,25 @@ func asyncCompactMapConcurrentIsBoundedBySlowConsumer() async {
 }
 
 @Test
+func asyncMatchConcurrentIsBoundedBySlowConsumer() async {
+    // Unmatched elements pass through without a worker, but still hold a slot until the
+    // consumer takes them — so `started` counts the matcher, which runs as elements are read.
+    let started = Mutex<Int>(0)
+    let pipe = Pipe<Int, E> {
+        From(0..<100_000)
+        AsyncMatch(
+            where: { (n: Int) in
+                started.withLock { $0 += 1 }
+                return n.isMultiple(of: 2)
+            },
+            concurrency: concurrency,
+            then: { n async -> Result<Int, E> in .success(n) }
+        )
+    }
+    await expectBounded(pipe, started: started)
+}
+
+@Test
 func droppedElementsFreeTheirSlots() async {
     // Every other element is dropped by the transform; dropped elements must give their slot
     // back immediately or the stage would stall once `concurrency` of them were in flight.

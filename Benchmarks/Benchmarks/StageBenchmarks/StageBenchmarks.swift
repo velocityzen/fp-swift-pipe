@@ -217,5 +217,66 @@ let benchmarks: @Sendable () -> Void = {
                 blackHole(await drain(match))
             }
         }
+
+        // MARK: Pattern-matching stages
+
+        let matchPattern = Pipe<Int, BenchError> {
+            FromResult(results)
+            Match(
+                where: { (value: Int) in value.isMultiple(of: 2) },
+                then: { value -> IntResult in
+                    .success(value &* 2)
+                }
+            )
+        }
+        Benchmark("Match (pattern)", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(matchPattern))
+            }
+        }
+
+        let matchError = Pipe<Int, BenchError> {
+            FromResult(results)
+            MatchError(BenchError()) { IntResult.success(0) }
+        }
+        Benchmark("MatchError", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(matchError))
+            }
+        }
+
+        let tapMatch = Pipe<Int, Never> {
+            From(0..<n)
+            TapMatch(
+                where: { (value: Int) in value.isMultiple(of: 2) },
+                then: { value in blackHole(value) }
+            )
+        }
+        Benchmark("TapMatch", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(tapMatch))
+            }
+        }
+
+        let tapMatchError = Pipe<Int, BenchError> {
+            FromResult(results)
+            TapMatchError(BenchError()) { blackHole(0) }
+        }
+        Benchmark("TapMatchError", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(tapMatchError))
+            }
+        }
+
+        // The type form matches by dynamic cast.
+        let tapMatchErrorType = Pipe<Int, BenchError> {
+            FromResult(results)
+            TapMatchError(BenchError.self) { error in blackHole(error) }
+        }
+        Benchmark("TapMatchError (type)", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(tapMatchErrorType))
+            }
+        }
     }
 }

@@ -16,7 +16,9 @@
 /// 3. **Open-pipe variant** (~6 lines, mirrors closed): same combine, but the accumulator
 ///    is `OpenPipe<I, U, F>` and stages compose into the open-pipe's `apply` closure.
 /// 4. **Widening** (only if the new stage requires a bound failure channel): a `Never`-input
-///    overload that lifts via `widenFailure(to:)`.
+///    overload that lifts via `widenFailure(to:)`. If the stage's failure can itself be
+///    `Never`, also add a `Never`-to-`Never` overload constrained on both sides — the plain
+///    and widening overloads both accept that pair, and neither is more specific.
 /// 5. **Optional** (only if the stage is type-preserving): a `next: OptionalStage<St>`
 ///    overload that returns `accumulated` unchanged when `optional.stage == nil`.
 ///
@@ -106,6 +108,17 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+    /// A failure-fixed stage that cannot fail (`St.Failure == Never`, e.g. `FlatMap` to
+    /// `Result<_, Never>`) after an upstream that cannot fail either: nothing to widen.
+    /// Both the plain overload and the widening one accept this pair and neither is more
+    /// specific than the other, so without this one the call is ambiguous.
+    @inlinable
+    public static func buildPartialBlock<U: Sendable, St: PipeStage>(
+        accumulated: Pipe<U, Never>,
+        next stage: St,
+    ) -> Pipe<St.Output, Never> where St.Input == U, St.Failure == Never {
+        stage.attach(accumulated)
+    }
 }
 
 extension PipeBuilder {
@@ -203,6 +216,16 @@ extension PipeBuilder {
         accumulated: OpenPipe<I, V, Never>,
         next stage: St,
     ) -> OpenPipe<I, V, St.OutputFailure> where St.InputFailure == Never {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    /// Open-pipe form of the `Never`-to-`Never` overload: a stage that cannot fail after an
+    /// upstream that cannot fail, which the plain and widening overloads both accept.
+    @inlinable
+    public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
+        accumulated: OpenPipe<I, U, Never>,
+        next stage: St,
+    ) -> OpenPipe<I, St.Output, Never> where St.Input == U, St.Failure == Never {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 

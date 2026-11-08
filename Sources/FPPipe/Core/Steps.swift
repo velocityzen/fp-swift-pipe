@@ -75,3 +75,28 @@ where Base.Failure == Never, Step.Input == Base.Element {
         return nil
     }
 }
+
+/// Applies a synchronous step to each element of `Base`, as a sequence — for handing a
+/// stepped upstream to an operator that takes an `AsyncSequence`.
+@usableFromInline
+struct StepSequence<Base: AsyncSequence, Step: PipeStep>: AsyncSequence
+where Base.Failure == Never, Step.Input == Base.Element {
+    @usableFromInline typealias Element = Step.Output
+    @usableFromInline typealias Failure = Never
+
+    @usableFromInline let base: Base
+    @usableFromInline let step: Step
+
+    @inlinable
+    init(_ base: Base, step: Step) {
+        self.base = base
+        self.step = step
+    }
+
+    @inlinable
+    func makeAsyncIterator() -> StepIterator<Base.AsyncIterator, Step> {
+        StepIterator(base.makeAsyncIterator(), step: step)
+    }
+}
+
+extension StepSequence: Sendable where Base: Sendable {}

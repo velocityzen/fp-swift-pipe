@@ -90,7 +90,44 @@ Stages are typed by what they touch — five protocols cover every shape, from f
 ### Folding
 
 - ``Match(onSuccess:onFailure:)``
-- ``AsyncMatch(onSuccess:onFailure:)``
+- ``AsyncMatch(concurrency:onSuccess:onFailure:)``
+
+### Pattern matching
+
+Act only on the elements a pattern matches — an `Equatable` value, a type, a predicate (`where:`) or a payload extractor (`extract:`). Everything else passes through.
+
+- ``Match(_:then:)-(Value,_)``
+- ``Match(_:then:)-(T.Type,_)``
+- ``Match(where:then:)``
+- ``Match(extract:then:)``
+- ``AsyncMatch(_:concurrency:then:)-(Value,_,_)``
+- ``AsyncMatch(_:concurrency:then:)-(T.Type,_,_)``
+- ``AsyncMatch(where:concurrency:then:)``
+- ``AsyncMatch(extract:concurrency:then:)``
+- ``MatchError(_:then:)-(F,_)``
+- ``MatchError(_:then:)-(E.Type,_)``
+- ``MatchError(where:then:)``
+- ``MatchError(extract:then:)``
+- ``AsyncMatchError(_:concurrency:then:)-(F,_,_)``
+- ``AsyncMatchError(_:concurrency:then:)-(E.Type,_,_)``
+- ``AsyncMatchError(where:concurrency:then:)``
+- ``AsyncMatchError(extract:concurrency:then:)``
+- ``TapMatch(_:then:)->PipePolyStage<Value,Value>``
+- ``TapMatch(_:then:)->PipeForwardingStage``
+- ``TapMatch(where:then:)``
+- ``TapMatch(extract:then:)``
+- ``AsyncTapMatch(_:then:)->PipePolyStage<Value,Value>``
+- ``AsyncTapMatch(_:then:)->PipeForwardingStage``
+- ``AsyncTapMatch(where:then:)``
+- ``AsyncTapMatch(extract:then:)``
+- ``TapMatchError(_:then:)->PipePolyValueStage<F,F>``
+- ``TapMatchError(_:then:)->PipeForwardingStage``
+- ``TapMatchError(where:then:)``
+- ``TapMatchError(extract:then:)``
+- ``AsyncTapMatchError(_:then:)->PipePolyValueStage<F,F>``
+- ``AsyncTapMatchError(_:then:)->PipeForwardingStage``
+- ``AsyncTapMatchError(where:then:)``
+- ``AsyncTapMatchError(extract:then:)``
 
 ### Observation
 

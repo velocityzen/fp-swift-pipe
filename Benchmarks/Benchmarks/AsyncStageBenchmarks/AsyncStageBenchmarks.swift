@@ -112,6 +112,34 @@ let benchmarks: @Sendable () -> Void = {
                     blackHole(await drain(asyncFlatMap))
                 }
             }
+
+            let asyncMatchPattern = Pipe<Int, BenchError> {
+                FromResult(results)
+                AsyncMatch(
+                    where: { (value: Int) in value.isMultiple(of: 2) },
+                    concurrency: concurrency,
+                    then: { value async -> IntResult in .success(value &* 2) }
+                )
+            }
+            Benchmark("AsyncMatch (pattern)", configuration: .pipe(tags, scaling: scaling)) {
+                benchmark in
+                for _ in benchmark.scaledIterations {
+                    blackHole(await drain(asyncMatchPattern))
+                }
+            }
+
+            let asyncMatchError = Pipe<Int, BenchError> {
+                FromResult(results)
+                AsyncMatchError(BenchError(), concurrency: concurrency) { () async -> IntResult in
+                    .success(0)
+                }
+            }
+            Benchmark("AsyncMatchError", configuration: .pipe(tags, scaling: scaling)) {
+                benchmark in
+                for _ in benchmark.scaledIterations {
+                    blackHole(await drain(asyncMatchError))
+                }
+            }
         }
 
         // MARK: Sequential stages
@@ -160,6 +188,32 @@ let benchmarks: @Sendable () -> Void = {
         Benchmark("AsyncMatch", configuration: .pipe(tags, scaling: scaling)) { benchmark in
             for _ in benchmark.scaledIterations {
                 blackHole(await drain(asyncMatch))
+            }
+        }
+
+        let asyncTapMatch = Pipe<Int, Never> {
+            From(0..<n)
+            AsyncTapMatch(
+                where: { (value: Int) in value.isMultiple(of: 2) },
+                then: { value async in
+                    blackHole(value)
+                }
+            )
+        }
+        Benchmark("AsyncTapMatch", configuration: .pipe(tags, scaling: scaling)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(asyncTapMatch))
+            }
+        }
+
+        let asyncTapMatchError = Pipe<Int, BenchError> {
+            FromResult(results)
+            AsyncTapMatchError(BenchError()) { blackHole(0) }
+        }
+        Benchmark("AsyncTapMatchError", configuration: .pipe(tags, scaling: scaling)) {
+            benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(asyncTapMatchError))
             }
         }
 
