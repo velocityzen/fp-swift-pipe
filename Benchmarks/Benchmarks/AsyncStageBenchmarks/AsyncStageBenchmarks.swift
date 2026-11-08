@@ -221,13 +221,16 @@ let benchmarks: @Sendable () -> Void = {
 
         for bufferSize in [1, 16] {
             let tags = ["n": "\(n)", "bufferSize": "\(bufferSize)"]
+            let tolerance: CountTolerance = bufferSize > 1 ? .racing : .standard
 
             let flatMapSequence = Pipe<Int, Never> {
                 From(0..<n)
                 FlatMapSequence(bufferSize: bufferSize) { (value: Int) in value..<(value + 2) }
             }
-            Benchmark("FlatMapSequence", configuration: .pipe(tags, scaling: scaling)) {
-                benchmark in
+            Benchmark(
+                "FlatMapSequence",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(flatMapSequence))
                 }
@@ -237,8 +240,10 @@ let benchmarks: @Sendable () -> Void = {
                 From(0..<n)
                 FlatMapAsyncSequence(bufferSize: bufferSize) { (_: Int) in CountingSequence(2) }
             }
-            Benchmark("FlatMapAsyncSequence", configuration: .pipe(tags, scaling: scaling)) {
-                benchmark in
+            Benchmark(
+                "FlatMapAsyncSequence",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(flatMapAsyncSequence))
                 }

@@ -58,7 +58,7 @@ Baselines are saved in `.benchmarkBaselines/`, which is not committed: they are 
 
 Malloc, object-allocation and ARC counts are stable from run to run, so they are the numbers to watch first. Times move with the machine's load; close other work before comparing them.
 
-`baseline check` fails only when one of those four counts gets worse; times and the other metrics are reported by `compare` but never fail a check. The tolerance is `checkedTolerance` in [BenchmarkSupport.swift](Sources/BenchmarkSupport/BenchmarkSupport.swift).
+`baseline check` fails only when one of those four counts gets worse; times and the other metrics are reported by `compare` but never fail a check. A count may move by 5% before it fails. The exception is the flat-map stages with a `bufferSize` above 1, whose producer task races the consumer. How often the consumer waits on an empty buffer depends on scheduling, so the same code has moved their retains by 7% on CI and their allocations from 15 to 17 (13%) locally. They may move by 15%, which still fails one more retain or allocation per element at `n: 1024`. Stages at `concurrency: 8` race too, but their medians stay within 2% from run to run, so they keep 5%. The tolerances are `CountTolerance` in [BenchmarkSupport.swift](Sources/BenchmarkSupport/BenchmarkSupport.swift).
 
 ```bash
 swift package benchmark baseline check main

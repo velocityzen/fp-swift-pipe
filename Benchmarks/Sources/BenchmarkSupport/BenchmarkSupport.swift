@@ -26,18 +26,36 @@ public let checkedMetrics: [BenchmarkMetric] = [
     .releaseCount,
 ]
 
-/// How far, in percent, a checked metric's median may move before
-/// `baseline check` reports it. Where a race between tasks decides how much
-/// a run allocates, two runs of the same code differ by a few percent; one
-/// allocation more per element is far more.
-let checkedTolerance = 5.0
+/// How far, in percent, a benchmark's checked metrics may move between two
+/// baselines before `baseline check` reports them.
+public enum CountTolerance: Sendable {
+    /// 5%, for a run that does the same work every time. Its counts barely
+    /// move between runs of the same code.
+    case standard
 
-var pipeThresholds: [BenchmarkMetric: BenchmarkThresholds] {
+    /// 15%, for a run whose producer task races its consumer, such as a
+    /// flat-map stage with a `bufferSize` above 1. How often the consumer waits
+    /// on an empty buffer depends on scheduling, and each wait retains and may
+    /// allocate. Runs of the same code have moved retains by 7% on CI and
+    /// allocations from 15 to 17 (13%) locally. One more retain or allocation
+    /// per element moves these counts by 30% or more at `n: 1024`, which this
+    /// still reports.
+    case racing
+
+    var percent: Double {
+        switch self {
+            case .standard: 5
+            case .racing: 15
+        }
+    }
+}
+
+func pipeThresholds(_ tolerance: CountTolerance) -> [BenchmarkMetric: BenchmarkThresholds] {
     Dictionary(
         uniqueKeysWithValues: pipeMetrics.map { metric in
             let thresholds =
                 checkedMetrics.contains(metric)
-                ? BenchmarkThresholds(relative: [.p50: checkedTolerance])
+                ? BenchmarkThresholds(relative: [.p50: tolerance.percent])
                 : BenchmarkThresholds()
             return (metric, thresholds)
         }
@@ -51,10 +69,12 @@ public extension Benchmark.Configuration {
     /// loop, and the scaled metrics are divided back to a single run. Use
     /// `.kilo` for runs in the micro- or nanosecond range, so timer and
     /// sampling overhead stays out of the numbers, and `.one` for runs that
-    /// already take a millisecond or so.
+    /// already take a millisecond or so. Pass `tolerance: .racing` for a run
+    /// whose producer task races its consumer.
     static func pipe(
         _ tags: [String: String] = [:],
-        scaling: BenchmarkScalingFactor = .kilo
+        scaling: BenchmarkScalingFactor = .kilo,
+        tolerance: CountTolerance = .standard
     ) -> Self {
         .init(
             metrics: pipeMetrics,
@@ -63,7 +83,7 @@ public extension Benchmark.Configuration {
             scalingFactor: scaling,
             maxDuration: .seconds(1),
             maxIterations: 10_000,
-            thresholds: pipeThresholds
+            thresholds: pipeThresholds(tolerance)
         )
     }
 }
