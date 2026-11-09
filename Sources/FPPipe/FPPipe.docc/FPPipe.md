@@ -1,100 +1,118 @@
 # ``FPPipe``
 
-A small, opinionated library for composing async, error-aware pipelines in Swift.
+Build async data pipelines in which every element is a `Result`.
 
 ## Overview
 
-A ``Pipe`` is a re-iterable description of an async stream of `Result<Success, Failure>`. Stages compose in a `@resultBuilder` DSL declared with ``PipeBuilder``. Errors live in the `Result.failure` channel — the library is `Result`-only by design, and Swift `throws` never crosses a stage boundary; throwing code is bridged at the closure level using stdlib `Result(catching:)` or fp-swift's `Result.fromAsync { … }`.
+FPPipe builds async data pipelines in Swift. A pipe reads elements from a source, passes them through stages, and gives you the results. Every element is a `Result`, so an error is a value that moves through the pipe like any other element. FPPipe is built on [fp-swift](https://github.com/velocityzen/fp-swift).
+
+<!-- Quick start: made from Readme.md by Scripts/make-docc-articles.swift. -->
 
 ```swift
-let pipe = Pipe<Item, AppError> {
-    From(urls)
-    AsyncFlatMap { url in await fetch(url) }
-    FlatMap { data in Result { try decode(data) }.mapError(AppError.parse) }
-    Filter { $0.isInteresting }
-    Tap { item in log("got \(item.id)") }
+import FPPipe
+
+let pipe = Pipe<Int, Never> {
+    From(1...6)                                 // 1, 2, 3, 4, 5, 6
+    Filter { (n: Int) in n.isMultiple(of: 2) }  // 2, 4, 6
+    Map { (n: Int) in n * 10 }                  // 20, 40, 60
 }
 
-let result = await pipe.toResult()
+let result = await pipe.toResult()  // .success([20, 40, 60])
 ```
 
-Stages are typed by what they touch — five protocols cover every shape, from fully-bound `(Value, Failure)` transforms down to forwarding stages polymorphic in both axes.
+`From` gives the numbers 1 to 6. `Filter` keeps the even numbers, and `Map` multiplies each one by 10.
+
+<!-- End of quick start. -->
+
+The articles below start with the basics and end with advanced topics. Start with <doc:GettingStarted>.
 
 ## Topics
 
-### Core types
+### Essentials
+
+- <doc:GettingStarted>
+- <doc:SourcesAndSinks>
+- <doc:ChangingValues>
+- <doc:HandlingFailures>
+
+### Advanced Topics
+
+- <doc:PatternMatching>
+- <doc:AsyncAndParallelWork>
+- <doc:TurningOneElementIntoMany>
+- <doc:OpenPipes>
+- <doc:ConditionsInsideAPipe>
+
+### Examples and Reference
+
+- <doc:ACompleteExample>
+- <doc:StageReference>
+- <doc:Design>
+
+### Pipes
 
 - ``Pipe``
-- ``OpenPipe``
-- ``OpenSource``
-- ``OpenResultSource``
 - ``PipeBuilder``
+- ``OptionalStage``
 - ``AnyAsyncSequence``
-
-### Stage protocols
-
-- ``PipeSource``
-- ``PipeStage``
-- ``PipePolyStage``
-- ``PipePolyValueStage``
-- ``PipeForwardingStage``
-- ``PipeFlatErrorStage``
 
 ### Sources
 
-- ``From(_:)-1``
+- ``From(_:)-2jxd7``
+- ``From(_:)-7jlr8``
 - ``FromResult(_:)``
-- ``Defer(_:)-1``
-- ``DeferResult(_:)``
-- ``FromAsync(_:)-1``
-- ``FromAsync(_:)-2``
-- ``FromAsyncResult(_:)``
 - ``Success(_:)``
 - ``Of(_:)``
 - ``Failure(_:valueType:)``
 - ``Empty(valueType:failureType:)``
+- ``Defer(_:)-8qg2i``
+- ``Defer(_:)-787aw``
+- ``DeferResult(_:)``
+- ``FromAsync(_:)-54dgo``
+- ``FromAsync(_:)-faxo``
+- ``FromAsyncResult(_:)``
 
-### Transforming successes
+### Reading Results
+
+- ``Pipe/toResult()``
+- ``Pipe/toArray()``
+- ``Pipe/reduce(_:_:)``
+- ``Pipe/first()``
+- ``Pipe/firstSuccess()``
+- ``Pipe/firstError()``
+
+### Changing Values
 
 - ``Map(_:)``
-- ``AsyncMap(_:)``
-- ``AsyncMapKeepOrder(_:)``
-- ``FlatMap(_:)``
-- ``AsyncFlatMap(_:)``
-- ``AsyncFlatMapKeepOrder(_:)``
-- ``CompactMap(_:)``
-- ``AsyncCompactMap(_:)``
-
-### Filtering and slicing
-
+- ``AsyncMap(concurrency:_:)``
 - ``Filter(_:)``
-- ``AsyncFilter(_:)``
+- ``AsyncFilter(concurrency:_:)``
+- ``CompactMap(_:)``
+- ``AsyncCompactMap(concurrency:_:)``
+- ``Tap(_:)``
+- ``AsyncTap(_:)``
 - ``Take(_:)``
 - ``Drop(_:)``
 
-### Fan-out
+### Handling Failures
 
-- ``FlatMapSequence(_:)``
-- ``FlatMapAsyncSequence(_:)``
-
-### Failure handling
-
+- ``FlatMap(_:)``
+- ``AsyncFlatMap(concurrency:_:)``
 - ``MapError(_:)``
+- ``TapError(_:)``
+- ``AsyncTapError(_:)``
 - ``Alt(_:)``
-- ``AsyncAlt(_:)``
+- ``AsyncAlt(concurrency:_:)``
 - ``FlatMapError(_:)``
-- ``AsyncFlatMapError(_:)``
+- ``AsyncFlatMapError(concurrency:_:)``
 - ``GetOrElse(_:)``
-- ``AsyncGetOrElse(_:)``
-
-### Folding
-
+- ``AsyncGetOrElse(concurrency:_:)``
 - ``Match(onSuccess:onFailure:)``
 - ``AsyncMatch(concurrency:onSuccess:onFailure:)``
 
-### Pattern matching
+### Pattern Matching
 
-Act only on the elements a pattern matches — an `Equatable` value, a type, a predicate (`where:`) or a payload extractor (`extract:`). Everything else passes through.
+A pattern is an `Equatable` value, a type, a condition (`where:`) or a payload (`extract:`). Elements that do not match pass through unchanged.
 
 - ``Match(_:then:)-(Value,_)``
 - ``Match(_:then:)-(T.Type,_)``
@@ -129,19 +147,32 @@ Act only on the elements a pattern matches — an `Equatable` value, a type, a p
 - ``AsyncTapMatchError(where:then:)``
 - ``AsyncTapMatchError(extract:then:)``
 
-### Observation
+### Keeping the Source Order
 
-- ``Tap(_:)``
-- ``AsyncTap(_:)``
-- ``TapError(_:)``
-- ``AsyncTapError(_:)``
+- ``AsyncMapKeepOrder(concurrency:_:)``
+- ``AsyncFlatMapKeepOrder(concurrency:_:)``
 
-### Sinks
+### Turning One Element into Many
 
-- ``Pipe/toResult()``
-- ``Pipe/toArray()``
-- ``Pipe/reduce(_:_:)``
-- ``Pipe/first()``
-- ``Pipe/firstSuccess()``
-- ``Pipe/firstError()``
+- ``FlatMapSequence(bufferSize:_:)``
+- ``FlatMapAsyncSequence(bufferSize:_:)``
 
+### Open Pipes
+
+- ``OpenPipe``
+- ``From(_:)->OpenSource<Input>``
+- ``FromAsync(_:)->OpenSource<Input>``
+- ``FromResult(_:_:)``
+- ``FromAsyncResult(_:_:)``
+- ``OpenSource``
+- ``OpenResultSource``
+
+### Stage Protocols
+
+- ``PipeSource``
+- ``PipeStage``
+- ``PipePolyStage``
+- ``PipePolyValueStage``
+- ``PipeForwardingStage``
+- ``PipeFlatErrorStage``
+- ``PipeFoldStage``

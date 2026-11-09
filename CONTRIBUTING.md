@@ -2,7 +2,7 @@
 
 ## Setup
 
-FPPipe is a plain SwiftPM package — clone and build. Requirements: Swift 6.2+ (language mode 6), macOS 15+.
+FPPipe is a plain SwiftPM package — clone and build. Requirements: Swift 6.3+ (language mode 6), macOS 15+.
 
 ```sh
 swift build
@@ -14,7 +14,7 @@ CI runs both linters in strict mode; run them locally before pushing (`brew inst
 
 ```sh
 swift-format lint --recursive --strict --configuration .swift-format \
-    Sources Tests Benchmarks/Package.swift Benchmarks/Sources Benchmarks/Benchmarks
+    Sources Tests Scripts Benchmarks/Package.swift Benchmarks/Sources Benchmarks/Benchmarks
 swiftlint --strict
 ```
 
@@ -31,7 +31,7 @@ swiftlint --strict
 
 ## Design rules
 
-- **Result-only.** Errors travel in the `Result.failure` channel; `throws` never crosses a stage boundary. No `TryMap`-style adapters — throwing code is bridged at call sites (see the Readme section "Working with throwing code").
+- **Result-only.** Errors travel in the `Result.failure` channel; `throws` never crosses a stage boundary. No `TryMap`-style adapters — throwing code is bridged at call sites (see the Readme section "Calling throwing code").
 - **Sequential by default.** Any knob that lets work run ahead of the consumer (`concurrency:`, `bufferSize:`) defaults to 1; parallelism and prefetch are explicit opt-ins at the call site.
 - **Strict concurrency clean.** Everything public is `Sendable`, stage closures are `@Sendable`, and the package must build warning-free in Swift 6 language mode on all supported platforms (macOS, iOS, tvOS, watchOS, visionOS, and Linux).
 - **Lazy and re-iterable.** Pipes store `@Sendable` builders and reconstruct the chain per iteration; a stage must not hold shared mutable state or assume it is iterated once.
@@ -54,7 +54,23 @@ swiftlint --strict
 2. **Implement** in a new file under `Sources/FPPipe/Stages/`: a `@usableFromInline` internal `struct …Stage` conforming to the protocol, plus an `@inlinable` public UpperCamelCase factory function returning `some <Protocol>`. Mark the stage's stored properties `@usableFromInline` and its `init` and `attach` `@inlinable`. A stage that turns each element into at most one element is a `…Step` struct conforming to `PipeStep` (or `AsyncPipeStep`), run by `StepIterator` (or `AsyncStepIterator`); `attach` returns `.iterating { .init(StepIterator(upstream.makeAsyncIterator(), step: step)) }`. Other stages get their own iterator. `Map` and `AsyncMap` show both shapes.
 3. **Builder overloads** are needed only when introducing a *new protocol shape* (rare) — a stage conforming to an existing protocol composes in the builder for free. The overload matrix (first-step identity, accumulated × stage, open-pipe variants, widening, optional) is documented at the top of `Sources/FPPipe/Builder/PipeBuilder.swift`; new overloads go in the matching `MARK` section.
 4. **Test** in `Tests/FPPipeTests/Stages/<Stage>Tests.swift`: the success path, the failure path (pass-through or handling), and at least one composition with another stage. Stages with a `concurrency:` parameter also need cancellation coverage in `Tests/FPPipeTests/Concurrency/`.
-5. **Document**: a doc comment on the public factory — including caveats such as ordering, buffering, and cancellation behavior — and a row in the Readme stage catalog.
+5. **Document**: a doc comment on the public factory — including caveats such as ordering, buffering, and cancellation behavior — a row in the Readme's "Stage reference" table, and a link in the Topics of `Sources/FPPipe/FPPipe.docc/FPPipe.md`. Then make the DocC articles again (see [Documentation](#documentation)).
+
+## Documentation
+
+`Readme.md` is the source of the documentation. A script makes the DocC articles in `Sources/FPPipe/FPPipe.docc` and the quick start on its landing page from it, so don't edit those by hand. Edit the Readme, then run:
+
+```sh
+swift Scripts/make-docc-articles.swift            # write the articles
+swift Scripts/make-docc-articles.swift --check    # change nothing; fail when an article is out of date
+```
+
+- **Articles.** Each article is made from one or more `## ` sections of the Readme, as `articles` at the top of the script lists them. The script fails on a section that no article uses. A new article also needs a `<doc:>` link in the Topics of `FPPipe.md`.
+- **Links.** DocC can't follow links to Readme sections (`#…`) or to relative paths. The script fails on them; add the DocC link that replaces each one to `linkEdits` in the script.
+- **Line length.** Keep code lines in the Readme at 72 characters or fewer. DocC cuts off longer lines, and the script fails on them.
+- **Tests.** Every Readme example is also a test in `Tests/FPPipeTests/Readme/`. When you change an example, change its test too.
+
+To see the result, open the package in Xcode and choose Product → Build Documentation.
 
 ## Benchmarks
 
