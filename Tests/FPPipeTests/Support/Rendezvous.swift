@@ -1,11 +1,9 @@
 import Synchronization
 
-/// Proves transforms run in parallel without timing them.
+/// Checks that closures run in parallel, without timing them.
 ///
-/// Each `enter()` waits until `expected` callers are inside at once, then leaves. A stage
-/// that runs them in parallel reaches `peak == expected` as soon as the last one starts,
-/// however loaded the machine is; a sequential stage never gets past one caller inside, so
-/// each wait gives up after ~2s and `peak` stays at 1.
+/// Each `enter()` waits until `expected` callers are inside at once, then leaves. If the
+/// closures run one at a time, each wait stops after about 2s and `peak` stays at 1.
 final class Rendezvous: Sendable {
     private let state = Mutex((inside: 0, peak: 0))
     private let expected: Int

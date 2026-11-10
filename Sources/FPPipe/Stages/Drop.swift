@@ -1,4 +1,4 @@
-/// Drops the first `count` elements of the pipeline (successes and failures alike).
+/// The stage that `Drop` returns.
 @usableFromInline
 struct DropStage: PipeForwardingStage {
     @usableFromInline let count: Int
@@ -16,7 +16,7 @@ struct DropStage: PipeForwardingStage {
     }
 }
 
-/// Skips the first `remaining` elements of `Base`, then yields the rest.
+/// Skips the first `remaining` elements of `Base`, and then gives the rest.
 @usableFromInline
 struct DropIterator<Base: AsyncIteratorProtocol>: AsyncIteratorProtocol
 where Base.Failure == Never {
@@ -44,7 +44,9 @@ where Base.Failure == Never {
     }
 }
 
-/// DSL: `Drop(2)`.
+/// Skips the first `count` elements.
+///
+/// Failures count too, like `dropFirst(_:)` on an `AsyncSequence`. `count` must be 0 or more.
 @inlinable
 public func Drop(_ count: Int) -> some PipeForwardingStage {
     DropStage(count)

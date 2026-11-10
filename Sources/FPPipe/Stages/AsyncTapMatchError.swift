@@ -1,6 +1,4 @@
-/// Asynchronously observes the failures a pattern matches and passes every element
-/// through unchanged. Runs sequentially, like `AsyncTapError`, to keep side effects in
-/// order.
+/// The stage behind `AsyncTapMatchError(pattern) { … }`.
 @usableFromInline
 struct AsyncTapMatchErrorStage<Matcher: PipeMatcher>: PipePolyValueStage
 where Matcher.Subject: Error & Sendable {
@@ -23,7 +21,7 @@ where Matcher.Subject: Error & Sendable {
     }
 }
 
-/// `AsyncTapMatchError(E.self)`: polymorphic in both channels, like `TapMatchError(E.self)`.
+/// The stage behind `AsyncTapMatchError(E.self) { … }`.
 @usableFromInline
 struct AsyncTapMatchErrorTypeStage<E: Error>: PipeForwardingStage {
     @usableFromInline let action: @Sendable (E) async -> Void
@@ -41,8 +39,10 @@ struct AsyncTapMatchErrorTypeStage<E: Error>: PipeForwardingStage {
     }
 }
 
-/// DSL: `AsyncTapMatchError(AppError.rateLimited) { await metrics.rateLimited() }` — runs
-/// for each failure equal to `error`.
+/// Runs `action` for each failure that equals `error`.
+///
+/// It handles one element at a time. Every element passes through unchanged.
+/// See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatchError<F: Error & Equatable & Sendable>(
     _ error: F,
@@ -51,8 +51,10 @@ public func AsyncTapMatchError<F: Error & Equatable & Sendable>(
     AsyncTapMatchErrorStage(EqualMatcher(error), action)
 }
 
-/// DSL: `AsyncTapMatchError(URLError.self) { e in await report(e) }` — runs for each
-/// failure that is an `E`, with the downcast error. Fits any pipe.
+/// Runs `action` for each failure that is an `E`.
+///
+/// `action` gets the error cast to `E`. It handles one element at a time. Every element passes
+/// through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatchError<E: Error>(
     _ type: E.Type,
@@ -61,8 +63,10 @@ public func AsyncTapMatchError<E: Error>(
     AsyncTapMatchErrorTypeStage(action)
 }
 
-/// DSL: `AsyncTapMatchError(where: \AppError.isRetryable) { e in await log(e) }` — runs for
-/// each failure the predicate accepts.
+/// Runs `action` for each failure for which `predicate` returns `true`.
+///
+/// It handles one element at a time. Every element passes through unchanged.
+/// See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatchError<F: Error & Sendable>(
     where predicate: @escaping @Sendable (F) -> Bool,
@@ -71,8 +75,10 @@ public func AsyncTapMatchError<F: Error & Sendable>(
     AsyncTapMatchErrorStage(PredicateMatcher(predicate), action)
 }
 
-/// DSL: `AsyncTapMatchError(extract: \AppError.statusCode) { code in await record(code) }` —
-/// runs for each failure the extractor returns a payload for, with that payload.
+/// Runs `action` for each failure for which `extract` returns a payload.
+///
+/// `action` gets the payload. It handles one element at a time. Every element passes through
+/// unchanged. See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatchError<F: Error & Sendable, Payload>(
     extract: @escaping @Sendable (F) -> Payload?,

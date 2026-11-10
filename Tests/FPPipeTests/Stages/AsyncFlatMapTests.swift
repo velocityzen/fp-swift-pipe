@@ -29,8 +29,7 @@ func asyncFlatMapConcurrentEmitsUnordered() async {
     let elements = await pipe.toArray()
     let values = elements.successes()
     #expect(Set(values) == Set([1, 2, 3, 4, 5]))
-    // Smallest sleep completes first — completion order is scheduler-timing dependent
-    // and simulators can stall under CI, so assert it on macOS/Linux only.
+    // Timing can vary on CI simulators, so check this on macOS and Linux only.
     #if os(macOS) || os(Linux)
     #expect(values.first == 1)
     #endif
@@ -38,8 +37,7 @@ func asyncFlatMapConcurrentEmitsUnordered() async {
 
 @Test
 func asyncFlatMapConcurrentParallelizesWork() async {
-    // Every transform waits until all `count` are running at once — reachable only if the
-    // stage runs them in parallel. No wall-clock bound, so a loaded CI runner can't flake it.
+    // Passes only if all `count` closures run at once. It measures no time, so slow CI is fine.
     let count = 5
     let rendezvous = Rendezvous(expected: count)
     let pipe = Pipe<Int, AppError> {

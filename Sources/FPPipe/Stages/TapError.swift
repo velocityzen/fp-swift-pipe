@@ -1,8 +1,6 @@
 import FP
 
-/// Observes failures and passes them through unchanged. Successes are not observed.
-///
-/// Value-polymorphic and failure-bound: `InputFailure == OutputFailure`.
+/// The stage that `TapError` returns.
 @usableFromInline
 struct TapErrorStage<F: Error & Sendable>: PipePolyValueStage {
     @usableFromInline typealias InputFailure = F
@@ -37,7 +35,9 @@ struct TapErrorStep<Value, F: Error>: PipeStep {
     }
 }
 
-/// DSL: `TapError { (e: AppError) in log(e) }`.
+/// Runs a side effect for each failure, like logging. The failure does not change.
+///
+/// Successes pass through unchanged.
 @inlinable
 public func TapError<F: Error & Sendable>(
     _ action: @escaping @Sendable (F) -> Void,

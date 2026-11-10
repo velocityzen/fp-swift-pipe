@@ -2,7 +2,7 @@
 
 Act only on the elements that match a pattern, like the cases of a `switch`.
 
-Pattern-matching stages act only on the elements that match a pattern. Each stage is like one `case` of a `switch`. All other elements pass through unchanged, so the value and failure types do not change.
+Pattern-matching stages act only on the elements that match a pattern, like one `case` of a `switch`. All other elements pass through unchanged, so the value and failure types stay the same.
 
 | Stage           | Looks at  | The handler returns                                             |
 | --------------- | --------- | --------------------------------------------------------------- |
@@ -77,15 +77,10 @@ let pages = Pipe<String, AppError> {
 
 `download(url)` returns a `Result<String, AppError>`. `Match("")` turns an empty page into a failure. `MatchError` recovers from rate limits, and `TapMatchError` prints the code of every other HTTP error.
 
-A stage finds its types from its own arguments, not from the stages around it. The pattern gives one type: the value type in `Match`, or the failure type in `MatchError`. (A type pattern, like `URLError.self`, only says what to cast to.) The handler must give the other type:
+A stage gets its types from its own arguments only. The pattern gives one type: the value type in `Match`, or the failure type in `MatchError`. The handler must give the other: in `.failure(AppError.http(204))` it is the failure type, and in `.success("busy, try later")` it is the value type. When the handler shows no type, write its return type: `MatchError(URLError.self) { e -> Result<Data, any Error> in … }`.
 
-- In `.failure(AppError.http(204))`, `AppError` is the failure type.
-- In `.success("busy, try later")`, `String` is the value type.
+`Match(pattern) { … }` changes only the elements that match. `Match(onSuccess:onFailure:)` is a different stage: it changes every element into a new type.
 
-When the handler shows no type, write its return type: `MatchError(URLError.self) { e -> Result<Data, any Error> in … }`.
-
-`Match(pattern) { … }` and `Match(onSuccess:onFailure:)` have the same name but do different jobs. The pattern form changes only the elements it matches. `Match(onSuccess:onFailure:)` changes every element of both channels into a new type.
-
-`AsyncMatch` and `AsyncMatchError` take `concurrency:` (see <doc:AsyncAndParallelWork#Running-work-in-parallel>). The pattern itself is always sync and runs once for each element. Only matching elements go to the async handler. `AsyncTapMatch` and `AsyncTapMatchError` handle one element at a time, like `AsyncTap`.
+`AsyncMatch` and `AsyncMatchError` take `concurrency:` (see <doc:AsyncAndParallelWork#Running-work-in-parallel>). The pattern is always sync, and only matching elements go to the async handler. `AsyncTapMatch` and `AsyncTapMatchError` handle one element at a time.
 
 <!-- Made from Readme.md by Scripts/make-docc-articles.swift. Edit Readme.md, then run the script. -->

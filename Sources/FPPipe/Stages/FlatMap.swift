@@ -1,5 +1,4 @@
-/// Maps the success channel via a `Result`-returning function. Failures pass through;
-/// a `.failure` returned by `transform` short-circuits the success channel for that element.
+/// The stage that `FlatMap` returns.
 @usableFromInline
 struct FlatMapStage<Input: Sendable, Output: Sendable, Failure: Error & Sendable>: PipeStage {
     @usableFromInline let transform: @Sendable (Input) -> Result<Output, Failure>
@@ -31,7 +30,11 @@ struct FlatMapStep<Input, Output, Failure: Error>: PipeStep {
     }
 }
 
-/// DSL: `FlatMap { value in .success(value * 2) }`.
+/// Changes each value with a closure that returns a `Result`. Failures pass through
+/// unchanged.
+///
+/// When the closure returns `.failure`, that element becomes a failure. To call code that
+/// throws, see <doc:HandlingFailures>.
 @inlinable
 public func FlatMap<Input: Sendable, Output: Sendable, Failure: Error & Sendable>(
     _ transform: @escaping @Sendable (Input) -> Result<Output, Failure>,

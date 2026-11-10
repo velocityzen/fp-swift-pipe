@@ -27,7 +27,6 @@ func asyncFilterKeepsMatchingSuccessesAndPassesFailures() async {
 
 @Test
 func asyncFilterConcurrentRetainsExpectedElements() async {
-    // With concurrency > 1, order is not guaranteed, but the set of survivors must match.
     let pipe = Pipe<Int, Never> {
         From(0..<20)
         AsyncFilter(concurrency: 8) { (n: Int) async in n.isMultiple(of: 3) }
@@ -40,8 +39,7 @@ func asyncFilterConcurrentRetainsExpectedElements() async {
 
 @Test
 func asyncFilterConcurrentParallelizesWork() async {
-    // Every transform waits until all `count` are running at once — reachable only if the
-    // stage runs them in parallel. No wall-clock bound, so a loaded CI runner can't flake it.
+    // Passes only if all `count` closures run at once. It measures no time, so slow CI is fine.
     let count = 5
     let rendezvous = Rendezvous(expected: count)
     let pipe = Pipe<Int, Never> {

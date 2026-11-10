@@ -16,7 +16,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.2.1")
+        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.3.0")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

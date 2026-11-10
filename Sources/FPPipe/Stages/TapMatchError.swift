@@ -1,5 +1,4 @@
-/// Observes the failures a pattern matches and passes every element through unchanged.
-/// Successes and non-matching failures are not observed.
+/// The stage behind `TapMatchError(pattern) { … }`.
 @usableFromInline
 struct TapMatchErrorStage<Matcher: PipeMatcher>: PipePolyValueStage
 where Matcher.Subject: Error & Sendable {
@@ -22,8 +21,7 @@ where Matcher.Subject: Error & Sendable {
     }
 }
 
-/// `TapMatchError(E.self)`: polymorphic in both channels, because a dynamic cast works on
-/// any failure type — typically an `any Error` channel.
+/// The stage behind `TapMatchError(E.self) { … }`. It fits any pipe.
 @usableFromInline
 struct TapMatchErrorTypeStage<E: Error>: PipeForwardingStage {
     @usableFromInline let action: @Sendable (E) -> Void
@@ -40,8 +38,9 @@ struct TapMatchErrorTypeStage<E: Error>: PipeForwardingStage {
     }
 }
 
-/// DSL: `TapMatchError(AppError.rateLimited) { metrics.rateLimited() }` — runs for each
-/// failure equal to `error`.
+/// Runs `action` for each failure that equals `error`.
+///
+/// Every element passes through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func TapMatchError<F: Error & Equatable & Sendable>(
     _ error: F,
@@ -50,8 +49,10 @@ public func TapMatchError<F: Error & Equatable & Sendable>(
     TapMatchErrorStage(EqualMatcher(error), action)
 }
 
-/// DSL: `TapMatchError(URLError.self) { e in log(e.code) }` — runs for each failure that is
-/// an `E`, with the downcast error. Fits any pipe; the cast decides what matches.
+/// Runs `action` for each failure that is an `E`.
+///
+/// `action` gets the error cast to `E`. Every element passes through unchanged.
+/// See <doc:PatternMatching>.
 @inlinable
 public func TapMatchError<E: Error>(
     _ type: E.Type,
@@ -60,8 +61,9 @@ public func TapMatchError<E: Error>(
     TapMatchErrorTypeStage(action)
 }
 
-/// DSL: `TapMatchError(where: \AppError.isRetryable) { e in log(e) }` — runs for each
-/// failure the predicate accepts.
+/// Runs `action` for each failure for which `predicate` returns `true`.
+///
+/// Every element passes through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func TapMatchError<F: Error & Sendable>(
     where predicate: @escaping @Sendable (F) -> Bool,
@@ -70,9 +72,9 @@ public func TapMatchError<F: Error & Sendable>(
     TapMatchErrorStage(PredicateMatcher(predicate), action)
 }
 
-/// DSL: `TapMatchError(extract: \AppError.statusCode) { code in metrics.record(code) }` —
-/// runs for each failure the extractor returns a payload for (typically one enum case's
-/// associated value), with that payload.
+/// Runs `action` for each failure for which `extract` returns a payload.
+///
+/// `action` gets the payload. Every element passes through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func TapMatchError<F: Error & Sendable, Payload>(
     extract: @escaping @Sendable (F) -> Payload?,

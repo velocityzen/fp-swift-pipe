@@ -1,9 +1,5 @@
-/// One stage's work on a single element: the element it emits for `input`, or `nil`
-/// to drop `input`. A stage that never drops returns `.some`, which the iterator's
-/// loop folds away once inlined.
-///
-/// Steps are structs the iterators below are generic over, so a step's body inlines
-/// into the specialized iterator and the only call it leaves is the user's closure.
+/// One stage's work on one element: the element to pass on, or `nil` to drop it. Steps are
+/// structs, so they inline into the iterators below.
 @usableFromInline
 protocol PipeStep<Input, Output>: Sendable {
     associatedtype Input
@@ -12,8 +8,7 @@ protocol PipeStep<Input, Output>: Sendable {
     func callAsFunction(_ input: Input) -> Output?
 }
 
-/// `PipeStep` for a stage whose work is asynchronous. The step runs on the isolation of
-/// the task iterating the pipeline.
+/// A `PipeStep` with async work. It runs on the reader's isolation.
 @usableFromInline
 protocol AsyncPipeStep<Input, Output>: Sendable {
     associatedtype Input
@@ -22,7 +17,7 @@ protocol AsyncPipeStep<Input, Output>: Sendable {
     func callAsFunction(_ input: Input) async -> Output?
 }
 
-/// Applies a synchronous step to each element of `Base`.
+/// Runs a sync step on each element of `Base`.
 @usableFromInline
 struct StepIterator<Base: AsyncIteratorProtocol, Step: PipeStep>: AsyncIteratorProtocol
 where Base.Failure == Never, Step.Input == Base.Element {
@@ -49,7 +44,7 @@ where Base.Failure == Never, Step.Input == Base.Element {
     }
 }
 
-/// Applies an asynchronous step to each element of `Base`, one element at a time.
+/// Runs an async step on each element of `Base`, one at a time.
 @usableFromInline
 struct AsyncStepIterator<Base: AsyncIteratorProtocol, Step: AsyncPipeStep>: AsyncIteratorProtocol
 where Base.Failure == Never, Step.Input == Base.Element {
@@ -76,8 +71,7 @@ where Base.Failure == Never, Step.Input == Base.Element {
     }
 }
 
-/// Applies a synchronous step to each element of `Base`, as a sequence — for handing a
-/// stepped upstream to an operator that takes an `AsyncSequence`.
+/// Runs a sync step on each element of `Base`, as an `AsyncSequence`.
 @usableFromInline
 struct StepSequence<Base: AsyncSequence, Step: PipeStep>: AsyncSequence
 where Base.Failure == Never, Step.Input == Base.Element {

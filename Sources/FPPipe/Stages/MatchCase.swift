@@ -1,10 +1,4 @@
-/// A `switch` over the success channel: each success the pattern matches is replaced by
-/// the `Result` its handler returns — keep or swap the value with `.success`, re-fail
-/// with `.failure`. Failures and non-matching successes pass through unchanged, so the
-/// value and failure types are preserved.
-///
-/// Not to be confused with `Match(onSuccess:onFailure:)`, which folds *every* element of
-/// both channels into a new type.
+/// The stage behind `Match(pattern) { … }`.
 @usableFromInline
 struct MatchCaseStage<Matcher: PipeMatcher, F: Error & Sendable>: PipeStage
 where Matcher.Subject: Sendable {
@@ -29,8 +23,9 @@ where Matcher.Subject: Sendable {
     }
 }
 
-/// DSL: `Match(Response.unauthorized) { .failure(AppError.auth) }` — replaces each success
-/// equal to `value`.
+/// Replaces each success that equals `value` with the `Result` of `handler`.
+///
+/// Other elements pass through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func Match<Value: Equatable & Sendable, F: Error & Sendable>(
     _ value: Value,
@@ -39,11 +34,10 @@ public func Match<Value: Equatable & Sendable, F: Error & Sendable>(
     MatchCaseStage(EqualMatcher(value), handler)
 }
 
-/// DSL: `Match(Cat.self) { cat -> Result<any Animal, AppError> in .failure(.noCats) }` —
-/// replaces each success that is a `T`, handing the handler the downcast value.
+/// Replaces each success that is a `T` with the `Result` of `handler`.
 ///
-/// Only the handler's return type names the pipe's value and failure types, so spell it
-/// out unless the body already does.
+/// The handler gets the value cast to `T`. Other elements pass through unchanged. Write the
+/// handler's return type, like `cat -> Result<any Animal, AppError> in`. See <doc:PatternMatching>.
 @inlinable
 public func Match<Value: Sendable, T, F: Error & Sendable>(
     _ type: T.Type,
@@ -52,8 +46,9 @@ public func Match<Value: Sendable, T, F: Error & Sendable>(
     MatchCaseStage(CastMatcher<Value, T>(), handler)
 }
 
-/// DSL: `Match(where: { (n: Int) in n < 0 }, then: { n in .failure(AppError.negative(n)) })`
-/// — replaces each success the predicate accepts.
+/// Replaces each success for which `predicate` returns `true` with the `Result` of `handler`.
+///
+/// Other elements pass through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func Match<Value: Sendable, F: Error & Sendable>(
     where predicate: @escaping @Sendable (Value) -> Bool,
@@ -62,9 +57,9 @@ public func Match<Value: Sendable, F: Error & Sendable>(
     MatchCaseStage(PredicateMatcher(predicate), handler)
 }
 
-/// DSL: `Match(extract: \Event.remoteError) { e in .failure(AppError.remote(e)) }` —
-/// replaces each success the extractor returns a payload for (typically one enum case's
-/// associated value), handing the handler that payload.
+/// Replaces each success for which `extract` returns a payload with the `Result` of `handler`.
+///
+/// The handler gets the payload. Other elements pass through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func Match<Value: Sendable, Payload, F: Error & Sendable>(
     extract: @escaping @Sendable (Value) -> Payload?,

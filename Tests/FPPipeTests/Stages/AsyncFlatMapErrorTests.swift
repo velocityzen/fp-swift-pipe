@@ -37,8 +37,7 @@ func asyncFlatMapErrorCanReFail() async {
 
 @Test
 func asyncFlatMapErrorConcurrentRecoversUnordered() async {
-    // concurrency > 1 takes the unordered path: elements emit as they complete,
-    // so compare contents rather than order.
+    // Results come in the order they finish, so compare contents only.
     let pipe = Pipe<Int, AppError> {
         From([1, 2, 3, 4])
         FlatMap { (n: Int) -> Result<Int, NetError> in

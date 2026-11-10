@@ -1,20 +1,18 @@
-/// A re-callable pipeline whose source is supplied at call time.
+/// A pipe that has no input yet.
 ///
-/// `OpenPipe` is what you get when a pipeline starts with a `From(Input.self)`
-/// (or `FromAsync(Input.self)`) marker instead of a concrete source. The marker leaves
-/// a hole at the source position; calling the open pipe with a real `Sequence` or
-/// `AsyncSequence` plugs that hole and returns a regular `Pipe<Success, Failure>`.
+/// Start it with `From(T.self)`. Call it with a sequence to get a `Pipe`. See <doc:OpenPipes>.
 ///
 /// ```swift
-/// let pipe = OpenPipe {
+/// let double = OpenPipe {
 ///     From(Int.self)
-///     Map { (n: Int) in n * 10 }
-///     Filter { $0 > 50 }
+///     Filter { (n: Int) in n > 0 }
+///     Map { (n: Int) in n * 2 }
 /// }
-/// for await x in pipe([1, 5, 10, 20]) { … }
+///
+/// await double([1, -1, 2]).toResult()   // .success([2, 4])
 /// ```
 public struct OpenPipe<Input: Sendable, Success: Sendable, Failure: Error & Sendable>: Sendable {
-    /// Apply the accumulated stages to a starter pipe — set by `PipeBuilder`.
+    /// Runs the stages on a pipe made from the input. `PipeBuilder` sets it.
     @usableFromInline let apply: @Sendable (Pipe<Input, Never>) -> Pipe<Success, Failure>
 
     @inlinable
@@ -22,7 +20,7 @@ public struct OpenPipe<Input: Sendable, Success: Sendable, Failure: Error & Send
         self.apply = apply
     }
 
-    /// Apply the open pipe to an `AsyncSequence`, returning a regular `Pipe` ready to iterate.
+    /// Returns a pipe that reads this `AsyncSequence` as its source.
     @inlinable
     public func callAsFunction<S: AsyncSequence & Sendable>(
         _ source: S,
@@ -30,7 +28,7 @@ public struct OpenPipe<Input: Sendable, Success: Sendable, Failure: Error & Send
         apply(Pipe { From(source) })
     }
 
-    /// Apply the open pipe to a synchronous `Sequence`, returning a regular `Pipe`.
+    /// Returns a pipe that reads this `Sequence` as its source.
     @inlinable
     public func callAsFunction<S: Sequence & Sendable>(
         _ source: S,
@@ -40,25 +38,22 @@ public struct OpenPipe<Input: Sendable, Success: Sendable, Failure: Error & Send
 }
 
 public extension OpenPipe {
-    /// Build an open pipeline from a `From<Input>()` marker followed by stages.
+    /// Creates an open pipe. The first line must be like `From(T.self)`.
     @inlinable
     init(@PipeBuilder _ build: () -> OpenPipe<Input, Success, Failure>) {
         self = build()
     }
 }
 
-/// Marker source for an "open" pipeline — a hole at the source position that
-/// `OpenPipe.callAsFunction` later fills with a real `Sequence` / `AsyncSequence`.
+/// The source of an open pipe, made by `From(T.self)`. It has no input yet.
 public struct OpenSource<Input: Sendable>: Sendable {
     @inlinable
     public init() {}
 }
 
-/// Marker source for an "open" Result-bearing pipeline — declares the value/failure types
-/// of an `AsyncSequence<Result<V, E>>` (or `Sequence<Result<V, E>>`) to be supplied at
-/// call time. Unlike `OpenSource`, the inner `Result`s lift directly into the pipe's
-/// failure channel — `pipe(stream)` returns `Pipe<…, E>`, and stages downstream see
-/// the unwrapped successes / propagated failures.
+/// The source of an open pipe that reads `Result`s, made by `FromResult(V.self, E.self)`.
+///
+/// Failures in the input go straight into the failure channel.
 public struct OpenResultSource<Value: Sendable, Failure: Error & Sendable>: Sendable {
     @inlinable
     public init() {}

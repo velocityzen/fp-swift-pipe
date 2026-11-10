@@ -1,29 +1,28 @@
-/// Result builder for declaring pipelines as a sequence of a source followed by stages.
+// Extending the builder
+//
+// A stage that uses an existing stage protocol needs no new overloads. A new stage protocol
+// (rare) needs overloads on these axes:
+//
+// 1. First-step identity: `buildPartialBlock(first stage:)`. It lets one stage be the body of
+//    an `if`/`else` branch or a `switch` case.
+// 2. Accumulated × stage: joins a `Pipe<U, F>` with the new stage's `attach`.
+// 3. Open-pipe variant: the same join, but the accumulated value is an `OpenPipe<I, U, F>`,
+//    and the stage goes into the open pipe's `apply` closure.
+// 4. Widening (only when the stage fixes the failure type): an overload for a `Never` input
+//    that uses `widenFailure(to:)`. If the stage's own failure can be `Never`, also add a
+//    `Never` to `Never` overload. Without it, the plain and widening overloads both match that
+//    pair, and neither is more specific.
+// 5. Optional (only when the stage keeps the types the same): a `next: OptionalStage<St>`
+//    overload that returns `accumulated` unchanged when `optional.stage == nil`.
+//
+// That is about 4 to 6 overloads for each new stage protocol. Put each new overload in the
+// matching MARK section below.
+
+/// Builds a pipe from a source and stages.
 ///
-/// The builder uses `buildPartialBlock` to left-fold heterogeneous steps:
-/// the first step must be a `PipeSource`, and each subsequent step is a
-/// `PipeStage` whose `Input` matches the upstream's `Output`.
-///
-/// ## Extending the builder
-///
-/// Adding a new stage shape (rare) requires touching this file in a predictable matrix:
-/// for each new stage protocol you typically add overloads across these axes:
-///
-/// 1. **First-step identity** (`Pipe`-side, ~6 lines): `buildPartialBlock(first stage:)` —
-///    lets a single stage appear as the body of an `if/else` / `switch case` branch.
-/// 2. **Accumulated × stage** (`Pipe`-side, ~6 lines): combines an existing `Pipe<U, F>`
-///    with the new stage's `attach`.
-/// 3. **Open-pipe variant** (~6 lines, mirrors closed): same combine, but the accumulator
-///    is `OpenPipe<I, U, F>` and stages compose into the open-pipe's `apply` closure.
-/// 4. **Widening** (only if the new stage requires a bound failure channel): a `Never`-input
-///    overload that lifts via `widenFailure(to:)`. If the stage's failure can itself be
-///    `Never`, also add a `Never`-to-`Never` overload constrained on both sides — the plain
-///    and widening overloads both accept that pair, and neither is more specific.
-/// 5. **Optional** (only if the stage is type-preserving): a `next: OptionalStage<St>`
-///    overload that returns `accumulated` unchanged when `optional.stage == nil`.
-///
-/// Roughly 4-6 overloads per new stage protocol. The MARK sections below group by axis;
-/// new overloads belong in the matching section.
+/// The first line must be a source, like `From`. Each line after it is a stage. A source that
+/// cannot fail works with stages that can fail. You can use `if`, `if`/`else` and `switch`, but
+/// not `for`. See <doc:ConditionsInsideAPipe>.
 @resultBuilder
 public enum PipeBuilder {
     // MARK: - First step (the source)
@@ -88,9 +87,7 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
-    /// Widening overload: when the upstream cannot fail (`Failure == Never`), allow
-    /// attaching a failure-fixed stage by lifting the failure channel into `St.Failure`.
-    /// This makes `From([…]) → FlatMap { … }` work without an explicit `MapError` step.
+    /// Lets a stage that can fail, like `FlatMap`, come after steps that cannot fail.
     @inlinable
     public static func buildPartialBlock<U: Sendable, St: PipeStage>(
         accumulated: Pipe<U, Never>,
@@ -99,7 +96,7 @@ public enum PipeBuilder {
         stage.attach(accumulated.widenFailure(to: St.Failure.self))
     }
 
-    /// Widening overload for value-polymorphic failure-transforming stages (e.g. `MapError`).
+    /// Lets an error stage, like `MapError`, come after steps that cannot fail.
     @inlinable
     public static func buildPartialBlock<V: Sendable, St: PipePolyValueStage>(
         accumulated: Pipe<V, Never>,
@@ -108,10 +105,8 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
-    /// A failure-fixed stage that cannot fail (`St.Failure == Never`, e.g. `FlatMap` to
-    /// `Result<_, Never>`) after an upstream that cannot fail either: nothing to widen.
-    /// Both the plain overload and the widening one accept this pair and neither is more
-    /// specific than the other, so without this one the call is ambiguous.
+    /// Adds a stage that cannot fail after steps that cannot fail. Without it, the call is
+    /// ambiguous.
     @inlinable
     public static func buildPartialBlock<U: Sendable, St: PipeStage>(
         accumulated: Pipe<U, Never>,
@@ -124,9 +119,8 @@ public enum PipeBuilder {
 extension PipeBuilder {
     // MARK: - Open-pipe variants
     //
-    // These mirror the closed-pipe overloads but accumulate an `OpenPipe` whose
-    // source slot is filled later by `OpenPipe.callAsFunction(_:)`. Each overload
-    // composes the new stage into the accumulated function.
+    // The same overloads as above, for an `OpenPipe`. Each one adds the stage to the open
+    // pipe's `apply` function. `OpenPipe.callAsFunction(_:)` gives the source later.
 
     @inlinable
     public static func buildPartialBlock<I: Sendable>(
@@ -135,8 +129,7 @@ extension PipeBuilder {
         OpenPipe(apply: { $0 })
     }
 
-    /// Result-bearing open source: callers will supply an `AsyncSequence<Result<V, E>>`,
-    /// and the inner `Result`s lift into the channel so downstream sees `Pipe<V, E>`.
+    /// Starts an open pipe that reads `Result`s. Input failures go into the failure channel.
     @inlinable
     public static func buildPartialBlock<V: Sendable, E: Error & Sendable>(
         first: OpenResultSource<V, E>,
@@ -201,7 +194,7 @@ extension PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
-    /// Widening overload (open-pipe form): non-failable upstream → failure-fixed stage.
+    /// The open-pipe form of the `FlatMap` widening overload.
     @inlinable
     public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
         accumulated: OpenPipe<I, U, Never>,
@@ -210,7 +203,7 @@ extension PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0).widenFailure(to: St.Failure.self)) })
     }
 
-    /// Widening overload (open-pipe form): non-failable upstream → value-poly failure stage.
+    /// The open-pipe form of the `MapError` widening overload.
     @inlinable
     public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
         accumulated: OpenPipe<I, V, Never>,
@@ -219,8 +212,7 @@ extension PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
-    /// Open-pipe form of the `Never`-to-`Never` overload: a stage that cannot fail after an
-    /// upstream that cannot fail, which the plain and widening overloads both accept.
+    /// The open-pipe form of the `Never` to `Never` overload.
     @inlinable
     public static func buildPartialBlock<I: Sendable, U: Sendable, St: PipeStage>(
         accumulated: OpenPipe<I, U, Never>,
@@ -229,11 +221,11 @@ extension PipeBuilder {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 
-    // MARK: - Stage-only block bodies (for branch / loop bodies)
+    // MARK: - Stage-only block bodies (for branch bodies)
     //
-    // The body of an `if`, `else`, `switch case`, or `for` is itself processed by this
-    // builder. When such a body is a single stage (no source), we pass the stage through
-    // unchanged. The stage is then applied by the outer accumulator's `buildPartialBlock`.
+    // The body of an `if`, `else` or `switch` case goes through this builder too. When the
+    // body is one stage with no source, it passes through unchanged. The outer
+    // `buildPartialBlock` then adds it to the pipe.
 
     @inlinable
     public static func buildPartialBlock<St: PipeStage>(first stage: St) -> St { stage }
@@ -250,9 +242,8 @@ extension PipeBuilder {
 
     // MARK: - Conditional composition (`if/else`, `switch`)
     //
-    // Both branches must produce a value of the same Swift type. In practice that means
-    // the same stage shape with the same Input/Output/Failure. Mixing stage protocols
-    // (e.g. Map in one branch, Filter in another) won't unify — Swift catches this.
+    // All branches must give the same Swift type: the same stage type, with the same Input,
+    // Output and Failure. A `Map` in one branch and a `Filter` in another does not compile.
 
     @inlinable
     public static func buildEither<C>(first component: C) -> C { component }
@@ -261,10 +252,9 @@ extension PipeBuilder {
 
     // MARK: - Optional composition (`if` without `else`)
     //
-    // `buildOptional` wraps the body's stage in `OptionalStage<St>`. The outer
-    // `buildPartialBlock` overloads applies the stage if present, passes through if absent.
-    // Only type-preserving stages are allowed — otherwise the absent case couldn't yield
-    // the same Pipe type as the present case.
+    // `buildOptional` puts the body's stage in an `OptionalStage<St>`. The overloads below add
+    // the stage when it is there, and return the pipe unchanged when it is not. So only stages
+    // that keep the types the same are allowed.
 
     @inlinable
     public static func buildOptional<St>(_ component: St?) -> OptionalStage<St> {
@@ -386,16 +376,15 @@ extension PipeBuilder {
         })
     }
 
-    // Note on `for` loops: deliberately not supported. `buildArray` would need
-    // `[some PipePolyStage<I, O>]`, but the Swift compiler can't infer the underlying
-    // opaque type when the loop body produces stages whose factories return
-    // `some Protocol`. Compose loops outside the builder by reducing into a single stage
-    // (e.g. `Map(transforms.reduce(id, compose))`).
+    // `for` loops are not supported on purpose. `buildArray` would need
+    // `[some PipePolyStage<I, O>]`, and the compiler cannot infer that opaque type when the
+    // stages come from functions that return `some Protocol`. Instead, combine the loop's work
+    // into one stage outside the builder, for example `Map(transforms.reduce(id, compose))`.
 }
 
-/// Wrapper produced by `PipeBuilder.buildOptional` so the outer fold can recognise an
-/// "optional stage" position. Only type-preserving stages can be optional, since the
-/// absent case must yield the same Pipe type as the present case.
+/// A stage that may be missing: the body of an `if` without `else`.
+///
+/// It works only with stages that keep the element types the same.
 public struct OptionalStage<St>: Sendable where St: Sendable {
     @usableFromInline let stage: St?
 
@@ -405,8 +394,7 @@ public struct OptionalStage<St>: Sendable where St: Sendable {
     }
 }
 
-/// Unwraps the `Result` elements an `OpenResultSource` pipe was called with into the
-/// pipe's own channels.
+/// Passes on each `Result` input of an open pipe as a success or a failure.
 @usableFromInline
 struct UnwrapResultStep<V, E: Error>: PipeStep {
     @inlinable
@@ -423,7 +411,7 @@ struct UnwrapResultStep<V, E: Error>: PipeStep {
 // MARK: - Pipe initializer
 
 public extension Pipe {
-    /// Build a pipeline from a sequence of a source and stages.
+    /// Creates a pipe from a source and stages.
     @inlinable
     init(@PipeBuilder _ build: () -> Pipe<Success, Failure>) {
         self = build()

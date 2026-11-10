@@ -22,8 +22,7 @@ func asyncGetOrElseReplacesFailuresAsynchronously() async {
 
 @Test
 func asyncGetOrElseConcurrentReplacesUnordered() async {
-    // concurrency > 1 takes the unordered path: elements emit as they complete,
-    // so compare contents rather than order.
+    // Results come in the order they finish, so compare contents only.
     let pipe = Pipe<Int, Never> {
         From([10, 20, 30, 40])
         FlatMap { (n: Int) -> Result<Int, AppError> in

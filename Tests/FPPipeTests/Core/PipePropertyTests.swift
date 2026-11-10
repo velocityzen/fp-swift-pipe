@@ -3,19 +3,16 @@ import Testing
 
 private enum E: Error, Equatable, Sendable { case bad }
 
-// Property-style tests: verify functor / bifunctor / monad-ish laws across many random
-// inputs. Not full SwiftCheck — just a parametric loop with a fixed seed so failures are
-// reproducible. Each `@Test(arguments:)` runs the body once per input; `swift test` reports
-// each as a separate case and the seed below makes the suite deterministic.
+// Laws checked on random inputs. Fixed seeds make failures repeatable.
 
 private func randomInts(seed: UInt64, count: Int, range: ClosedRange<Int>) -> [Int] {
     let rng = SystemRandomNumberGenerator()
-    _ = rng  // silence unused warning under conditional builds
+    _ = rng  // avoids an unused-variable warning in some builds
     var generator = LCG(seed: seed)
     return (0..<count).map { _ in Int.random(in: range, using: &generator) }
 }
 
-/// Tiny deterministic PRNG so test cases reproduce when given the same seed.
+/// A seeded random number generator, so runs repeat.
 private struct LCG: RandomNumberGenerator {
     private var state: UInt64
     init(seed: UInt64) { self.state = seed == 0 ? 1 : seed }

@@ -28,8 +28,7 @@ func asyncCompactMapConcurrentRetainsParsedValues() async {
 
 @Test
 func asyncCompactMapConcurrentParallelizesWork() async {
-    // Every transform waits until all `count` are running at once — reachable only if the
-    // stage runs them in parallel. No wall-clock bound, so a loaded CI runner can't flake it.
+    // Passes only if all `count` closures run at once. It measures no time, so slow CI is fine.
     let count = 5
     let rendezvous = Rendezvous(expected: count)
     let pipe = Pipe<Int, Never> {

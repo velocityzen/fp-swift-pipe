@@ -1,4 +1,4 @@
-/// Transforms the failure channel from one error type to another. Successes pass through.
+/// The stage that `MapError` returns.
 @usableFromInline
 struct MapErrorStage<
     InputFailure: Error & Sendable,
@@ -33,7 +33,7 @@ struct MapErrorStep<Value, InputFailure: Error, OutputFailure: Error>: PipeStep 
     }
 }
 
-/// DSL: `MapError { (e: NetworkError) in AppError.network(e) }`.
+/// Changes each error, or its type. Successes pass through unchanged.
 @inlinable
 public func MapError<InputFailure: Error & Sendable, OutputFailure: Error & Sendable>(
     _ transform: @escaping @Sendable (InputFailure) -> OutputFailure,

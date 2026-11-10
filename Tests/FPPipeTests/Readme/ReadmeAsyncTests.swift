@@ -1,6 +1,5 @@
-// The examples from "Async stages" and "Running work in parallel", as Readme.md and
-// the DocC articles in Sources/FPPipe/FPPipe.docc show them.
-// When you change an example, change it in all three places.
+// Examples from "Async stages" and "Running work in parallel" in Readme.md and the DocC
+// articles. Keep all three copies the same.
 
 import FP
 import FPPipe
@@ -65,4 +64,20 @@ func readmeRunningWorkInParallel() async {
         AsyncFilter(concurrency: 4) { (item: Item) in await isValid(item) }
     }
     #expect(await items.toArray().count == 3)
+
+    let ordered = Pipe<Data, Never> {
+        From(urls)
+        AsyncMap(concurrency: 10, ordered: true) { (url: URL) in
+            await fetchData(url)
+        }
+    }
+    #expect(await ordered.toResult() == .success(urls.map { Data($0.lastPathComponent.utf8) }))
+
+    let limited = Pipe<Data, Never> {
+        From(urls)
+        AsyncMap(concurrency: 8, ordered: true, bufferLimit: 32) { (url: URL) in
+            await fetchData(url)
+        }
+    }
+    #expect(await limited.toResult() == ordered.toResult())
 }

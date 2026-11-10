@@ -1,5 +1,4 @@
-/// Asynchronously observes successful values and passes them through unchanged.
-/// Failures are not observed by this stage.
+/// The stage that `AsyncTap` returns.
 @usableFromInline
 struct AsyncTapStage<Value: Sendable>: PipePolyStage {
     @usableFromInline typealias Input = Value
@@ -37,7 +36,10 @@ struct AsyncTapStep<Value, F: Error>: AsyncPipeStep {
     }
 }
 
-/// DSL: `AsyncTap { value in await log(value) }`.
+/// Runs an async side effect for each value, like logging. The value does not change.
+///
+/// Failures pass through unchanged. The closure handles one value at a time, so side effects
+/// happen in order.
 @inlinable
 public func AsyncTap<Value: Sendable>(
     _ action: @escaping @Sendable (Value) async -> Void,

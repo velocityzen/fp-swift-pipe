@@ -1,7 +1,6 @@
 import FP
 
-/// Observes successful values and passes them through unchanged. Failures are not
-/// observed by this stage.
+/// The stage that `Tap` returns.
 @usableFromInline
 struct TapStage<Value: Sendable>: PipePolyStage {
     @usableFromInline typealias Input = Value
@@ -36,7 +35,9 @@ struct TapStep<Value, F: Error>: PipeStep {
     }
 }
 
-/// DSL: `Tap { value in print(value) }`.
+/// Runs a side effect for each value, like logging. The value does not change.
+///
+/// Failures pass through unchanged.
 @inlinable
 public func Tap<Value: Sendable>(
     _ action: @escaping @Sendable (Value) -> Void,

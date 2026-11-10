@@ -2,7 +2,7 @@
 
 Build a pipe once, and run it with different inputs.
 
-Start a pipe with `From(T.self)` to build it without its input. You get an `OpenPipe`, which works like a function: call it with a sequence, and it returns a normal `Pipe`. Build it once and use it with many inputs, for example once per request or once per test.
+Start a pipe with `From(T.self)` to build it without its input. You get an `OpenPipe`, which works like a function: call it with a sequence, and it returns a normal `Pipe`. Build it once and use it with many inputs.
 
 ```swift
 let double = OpenPipe {

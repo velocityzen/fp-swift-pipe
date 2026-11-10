@@ -37,8 +37,6 @@ Requirements:
 - Swift 6.3 or later, in Swift 6 language mode
 - macOS, iOS, tvOS, watchOS or visionOS 26 or later, or Linux
 
-CI tests every platform: macOS, Ubuntu Linux, and the iOS, tvOS, watchOS and visionOS simulators. The library builds without warnings under strict concurrency checking.
-
 Add the package to `Package.swift`:
 
 ```swift
@@ -73,11 +71,7 @@ let pipe = Pipe<Int, Never> {
 let result = await pipe.toResult()  // .success([20, 40, 60])
 ```
 
-`From` gives the numbers 1 to 6. `Filter` keeps the even numbers, and `Map` multiplies each one by 10.
-
-`Pipe<Int, Never>` means: the pipe gives `Int` values, and it cannot fail (`Never`).
-
-Creating a pipe does no work. The pipe runs when you read it, here with `toResult()`. If you read it again, it runs again.
+`Pipe<Int, Never>` gives `Int` values and cannot fail (`Never`). Creating a pipe does no work. It runs each time you read it, here with `toResult()`.
 
 ## How it works
 
@@ -91,10 +85,10 @@ A pipe has three kinds of parts:
 
 Each element is a `Result<Success, Failure>`: a value (a success) or an error (a failure). Most stages work on one side only:
 
-- Value stages, like `Map` and `Filter`, work on successes. Failures pass through them unchanged.
-- Error stages, like `MapError` and `FlatMapError`, work on failures. Successes pass through them unchanged.
+- Value stages, like `Map` and `Filter`, change successes. Failures pass through.
+- Error stages, like `MapError` and `FlatMapError`, change failures. Successes pass through.
 
-So when one element fails, the other elements still pass through:
+So one failure does not stop the other elements:
 
 ```swift
 enum ParseError: Error, Equatable {
@@ -120,21 +114,21 @@ await numbers.toResult()  // .failure(.notANumber("x"))
 
 `toArray()` returns every element. `toResult()` stops at the first failure.
 
-`From` gives a pipe that cannot fail. `FlatMap` is the first stage that can fail, so it sets the failure type to `ParseError`. You do not need a stage to change `Never` into `ParseError`.
+`From` cannot fail. `FlatMap` is the first stage that can, so it sets the failure type to `ParseError`. You do not need a stage to change `Never` into `ParseError`.
 
 ## Sources
 
 A source is always the first line of a pipe.
 
-| Source                                                   | Gives                                                                                                                                                                       |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `From(sequence)`                                         | Each element of a `Sequence` or `AsyncSequence`, as a success.                                                                                                              |
-| `FromResult(sequence)`                                   | Each element of an `AsyncSequence` of `Result`s, unchanged. A pipe is such a sequence, so a pipe can read another pipe.                                                     |
-| `Success(value)` or `Of(value)`                          | One success.                                                                                                                                                                |
-| `Failure(error, valueType:)`                             | One failure.                                                                                                                                                                |
-| `Empty(valueType:failureType:)`                          | No elements.                                                                                                                                                                |
-| `Defer { … }` or `DeferResult { … }`                     | The elements of a sequence that the closure creates. The closure runs again on every run of the pipe.                                                                       |
-| `FromAsync { await … }` or `FromAsyncResult { await … }` | Like `Defer`, but the closure is `async`, for example to open a database cursor. It runs when the first element is needed. The sequence is then read one element at a time. |
+| Source                                                   | Gives                                                                                           |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `From(sequence)`                                         | Each element of a `Sequence` or `AsyncSequence`, as a success.                                  |
+| `FromResult(sequence)`                                   | Each element of an `AsyncSequence` of `Result`s, unchanged. It can read another pipe.           |
+| `Success(value)` or `Of(value)`                          | One success.                                                                                    |
+| `Failure(error, valueType:)`                             | One failure.                                                                                    |
+| `Empty(valueType:failureType:)`                          | No elements.                                                                                    |
+| `Defer { … }` or `DeferResult { … }`                     | The elements of a sequence that the closure creates. The closure runs on every run of the pipe. |
+| `FromAsync { await … }` or `FromAsyncResult { await … }` | Like `Defer`, but the closure is `async`. It runs when the first element is needed.             |
 
 ```swift
 From([1, 2, 3])                         // an array
@@ -149,7 +143,7 @@ FromAsync { await database.userIDs() }  // made by async code
 
 A pipe does not save its results. Each time you read it, it reads its source again. An array or a range gives the same elements every time.
 
-A sequence that can be read only once, like a stored `AsyncStream`, is empty the second time, and there is no error. To avoid this, create the sequence inside `Defer`, so every run gets a new one:
+A sequence that can be read only once, like a stored `AsyncStream`, is empty the second time, with no error. Create it inside `Defer` instead, so every run gets a new one:
 
 ```swift
 let pipe = Pipe<Int, Never> {
@@ -172,7 +166,7 @@ A sink reads the pipe and returns the results.
 | `await pipe.firstError()`             | `Failure?`                                                   | at the first failure      |
 | `for await element in pipe`           | one `Result` at a time                                       | at `break`, or at the end |
 
-When a sink stops reading, the pipe stops working too. No more elements are read from the source.
+When a sink stops reading, the pipe stops reading the source too.
 
 ```swift
 let counts = Pipe<Int, Never> { From(1...4) }
@@ -277,13 +271,13 @@ let lines = Pipe<String, Never> {
 }
 ```
 
-`AsyncFlatMap`, `AsyncTapError`, `AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse` and `AsyncMatch` do the same with an `async` closure, for example to read a value from a cache.
+`AsyncFlatMap`, `AsyncTapError`, `AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse` and `AsyncMatch` do the same with an `async` closure.
 
-To handle only some errors, use [`MatchError`](#pattern-matching). It is shorter than a `FlatMapError` that has to return `.failure(error)` for all other errors.
+To handle only some errors, use [`MatchError`](#pattern-matching).
 
 ## Calling throwing code
 
-Stages do not throw. Every error is a value in the failure channel, so the compiler always knows the failure type. To call a function that throws, turn its result into a `Result` inside the closure:
+Stages do not throw, so the compiler always knows the failure type. To call a function that throws, turn its result into a `Result` inside the closure:
 
 - For sync code, use `Result { try … }` from the standard library, in `FlatMap`.
 - For async code, use `Result.fromAsync { try await … }` from fp-swift, in `AsyncFlatMap`.
@@ -323,7 +317,7 @@ A throwing `AsyncSequence` works the same way: turn it into a sequence of `Resul
 
 ## Pattern matching
 
-Pattern-matching stages act only on the elements that match a pattern. Each stage is like one `case` of a `switch`. All other elements pass through unchanged, so the value and failure types do not change.
+Pattern-matching stages act only on the elements that match a pattern, like one `case` of a `switch`. All other elements pass through unchanged, so the value and failure types stay the same.
 
 | Stage           | Looks at  | The handler returns                                             |
 | --------------- | --------- | --------------------------------------------------------------- |
@@ -398,16 +392,11 @@ let pages = Pipe<String, AppError> {
 
 `download(url)` returns a `Result<String, AppError>`. `Match("")` turns an empty page into a failure. `MatchError` recovers from rate limits, and `TapMatchError` prints the code of every other HTTP error.
 
-A stage finds its types from its own arguments, not from the stages around it. The pattern gives one type: the value type in `Match`, or the failure type in `MatchError`. (A type pattern, like `URLError.self`, only says what to cast to.) The handler must give the other type:
+A stage gets its types from its own arguments only. The pattern gives one type: the value type in `Match`, or the failure type in `MatchError`. The handler must give the other: in `.failure(AppError.http(204))` it is the failure type, and in `.success("busy, try later")` it is the value type. When the handler shows no type, write its return type: `MatchError(URLError.self) { e -> Result<Data, any Error> in … }`.
 
-- In `.failure(AppError.http(204))`, `AppError` is the failure type.
-- In `.success("busy, try later")`, `String` is the value type.
+`Match(pattern) { … }` changes only the elements that match. `Match(onSuccess:onFailure:)` is a different stage: it changes every element into a new type.
 
-When the handler shows no type, write its return type: `MatchError(URLError.self) { e -> Result<Data, any Error> in … }`.
-
-`Match(pattern) { … }` and `Match(onSuccess:onFailure:)` have the same name but do different jobs. The pattern form changes only the elements it matches. `Match(onSuccess:onFailure:)` changes every element of both channels into a new type.
-
-`AsyncMatch` and `AsyncMatchError` take `concurrency:` (see [Running work in parallel](#running-work-in-parallel)). The pattern itself is always sync and runs once for each element. Only matching elements go to the async handler. `AsyncTapMatch` and `AsyncTapMatchError` handle one element at a time, like `AsyncTap`.
+`AsyncMatch` and `AsyncMatchError` take `concurrency:` (see [Running work in parallel](#running-work-in-parallel)). The pattern is always sync, and only matching elements go to the async handler. `AsyncTapMatch` and `AsyncTapMatchError` handle one element at a time.
 
 ## Async stages
 
@@ -423,7 +412,7 @@ let activeUsers = Pipe<User, APIError> {
 
 `api.user(id)` returns a `Result<User, APIError>`, so a failed request becomes a failure in the pipe.
 
-By default, an async stage handles one element at a time, in order. The closure runs in the task that reads the pipe, on the same actor.
+By default, an async stage handles one element at a time, in order, in the task that reads the pipe.
 
 fp-swift's `|>` operator also works with async functions:
 
@@ -433,33 +422,46 @@ AsyncMap { (url: URL) in await url |> fetchData |> decodeArticle }
 
 ## Running work in parallel
 
-FPPipe runs work one element at a time unless you ask for more. Async stages take `concurrency:`. The default is 1. With a larger number, up to that many closures run at the same time:
+Async stages take `concurrency:`. The default is 1. With a larger number, up to that many closures run at the same time:
 
 ```swift
 AsyncMap(concurrency: 10) { (url: URL) in await fetchData(url) }
 AsyncFilter(concurrency: 4) { (item: Item) in await isValid(item) }
 ```
 
-The order of results depends on the stage:
+By default, results come out **in the order they finish**. A fast element can pass a slow one. With `ordered: true`, results come out **in source order**:
 
-- `AsyncMap`, `AsyncFlatMap` and the other async stages give results **in the order they finish**. A fast element can pass a slow one.
-- `AsyncMapKeepOrder` and `AsyncFlatMapKeepOrder` give results **in source order**. A slow element holds back the faster elements behind it.
+```swift
+AsyncMap(concurrency: 10, ordered: true) { (url: URL) in
+    await fetchData(url)
+}
+```
 
-Use the `KeepOrder` stages only when the order matters, for example when you later zip the results with another sequence.
+A slow element then holds back the results after it, but not the work: later elements are still processed, and their results wait. Use `ordered: true` only when the order matters.
+
+`bufferLimit:` caps how many results may wait, for example when the source never ends:
+
+```swift
+AsyncMap(concurrency: 8, ordered: true, bufferLimit: 32) { (url: URL) in
+    await fetchData(url)
+}
+```
+
+A `bufferLimit` below `concurrency - 1` also lowers how many closures run at the same time. Without `ordered: true`, `bufferLimit:` does nothing.
 
 Rules:
 
 - At most `concurrency` elements are being processed or waiting to be read. When the reader is slow, the stage stops reading the source, so memory does not grow.
-- Elements that the stage does not change, like failures in `AsyncMap`, pass through without a new task.
-- With `concurrency: 1`, the closure runs in the reader's task and on its actor. With more, closures run in child tasks, not on the reader's actor.
-- `concurrency:` must be 1 or more. A smaller value stops the program with a precondition failure.
-- `AsyncTap`, `AsyncTapError`, `AsyncTapMatch` and `AsyncTapMatchError` have no `concurrency:`. They always run one at a time, so side effects happen in order.
+- With `ordered: true`, results that wait for an earlier, slower element do not count toward `concurrency`. So many results can wait behind one very slow element, unless you set `bufferLimit:`.
+- With `concurrency: 1`, the closure runs in the reader's task. With more, closures run in child tasks.
+- `concurrency:` must be 1 or more, and `bufferLimit:` must be 0 or more. A smaller value stops the program.
+- `AsyncTap`, `AsyncTapError`, `AsyncTapMatch` and `AsyncTapMatchError` have no `concurrency:`. They run one at a time, so side effects happen in order.
 
 ### Cancellation
 
-When you `break` out of `for await`, or the reading task is cancelled, the pipe stops at once. Running closures get a cancellation signal, and the reader does not wait for them to finish.
+When you `break` out of `for await`, or the reading task is cancelled, the pipe stops at once. Running closures are cancelled, and the reader does not wait for them.
 
-A closure stops early only if it checks for cancellation. A closure that awaits `Task.sleep`, a `URLSession` call or `try Task.checkCancellation()` stops quickly. A long loop with no `await` runs to its end. This is how Swift tasks work. For long CPU work with `concurrency:` above 1, check `Task.isCancelled` inside the closure.
+A closure stops early only if it checks for cancellation. `Task.sleep`, `URLSession` calls and `try Task.checkCancellation()` do. A long loop with no `await` runs to its end, so check `Task.isCancelled` inside it.
 
 ## Turning one element into many
 
@@ -474,15 +476,13 @@ let repeated = Pipe<Int, Never> {
 await repeated.toResult()   // .success([1, 2, 2, 3, 3, 3])
 ```
 
-Both stages take `bufferSize:`. The default is 1: each new element is made only when the reader asks for it, in the reader's task, and nothing is stored. With a larger number, a separate task makes up to `bufferSize` elements ahead of the reader, and then waits. Use it when the reader takes elements in bursts.
+Both stages take `bufferSize:`, which must be 1 or more. With the default of 1, each element is made only when the reader asks for it. With a larger number, a separate task makes up to `bufferSize` elements ahead of the reader. Use it when the reader takes elements in bursts.
 
-Even a very large inner sequence, like a range of a million numbers, is never stored in memory all at once. When the reader stops or is cancelled, the stage stops too.
-
-`bufferSize:` must be 1 or more.
+The inner sequence is never stored all at once, even when it is very large. When the reader stops, the stage stops too.
 
 ## Open pipes
 
-Start a pipe with `From(T.self)` to build it without its input. You get an `OpenPipe`, which works like a function: call it with a sequence, and it returns a normal `Pipe`. Build it once and use it with many inputs, for example once per request or once per test.
+Start a pipe with `From(T.self)` to build it without its input. You get an `OpenPipe`, which works like a function: call it with a sequence, and it returns a normal `Pipe`. Build it once and use it with many inputs.
 
 ```swift
 let double = OpenPipe {
@@ -520,7 +520,7 @@ All stages work in open pipes.
 
 You can use `if`, `if`/`else` and `switch` inside a pipe.
 
-With `if`/`else` and `switch`, every branch must give the same stage type. In the example below, each `if` branch is a `Map<Int, Int>`, and each `switch` case is a `Filter<Int>`. A `Map` in one branch and a `Filter` in another does not compile.
+With `if`/`else` and `switch`, every branch must have the same stage type. Below, each `if` branch is a `Map<Int, Int>`, and each `switch` case is a `Filter<Int>`. A `Map` in one branch and a `Filter` in another does not compile.
 
 ```swift
 let pipe = Pipe<Int, Never> {
@@ -540,7 +540,7 @@ let pipe = Pipe<Int, Never> {
 }
 ```
 
-`if` without `else` works only for stages that keep the element types the same. When the condition is false, the pipe must have the same type as when it is true. These stages work:
+`if` without `else` works only for stages that keep the element types the same, because the pipe must have the same type when the condition is false. These stages work:
 
 - `Take`, `Drop`, `Tap`, `TapError` and their async versions
 - every [pattern-matching](#pattern-matching) stage
@@ -564,9 +564,9 @@ let parsed = Pipe<Int, ParseError> {
 }
 ```
 
-A stage that changes a type, like `Map { (n: Int) in String(n) }`, does not compile in an `if` without `else`. Add an `else` branch with another stage of the same type.
+A stage that changes a type, like `Map { (n: Int) in String(n) }`, needs an `else` branch with a stage of the same type.
 
-`for` loops do not work inside a pipe. Combine the loop's work into one stage outside the pipe:
+`for` loops do not work inside a pipe. Combine the loop's work into one closure outside the pipe:
 
 ```swift
 // Instead of `for f in transforms { Map(f) }`:
@@ -580,7 +580,7 @@ let pipe = Pipe<Int, Never> {
 }
 ```
 
-When branches need different stage types, choose outside the pipe. A pipe is an `AsyncSequence` of `Result`s, so `FromResult` can read it as the source of a new pipe:
+When branches need different stage types, choose outside the pipe. `FromResult` can read one pipe as the source of another:
 
 ```swift
 let base = Pipe<Int, Never> { From(0..<10) }
@@ -627,7 +627,7 @@ func fetchArticles(
         From(urls)
 
         // 2. Download up to 4 at a time, and keep the source order.
-        AsyncFlatMapKeepOrder(concurrency: 4) { (url: URL) in
+        AsyncFlatMap(concurrency: 4, ordered: true) { (url: URL) in
             await Result.fromAsync {
                 try await URLSession.shared.data(from: url).0
             }
@@ -668,8 +668,6 @@ func fetchArticles(
 | -------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `Map` / `AsyncMap`                     | `(A) -> B`                                   | Changes each value.                                                                                 |
 | `FlatMap` / `AsyncFlatMap`             | `(A) -> Result<B, F>`                        | Changes each value. It can turn a value into a failure.                                             |
-| `AsyncMapKeepOrder`                    | `(A) async -> B`                             | Like `AsyncMap` with `concurrency:`, but keeps the source order.                                    |
-| `AsyncFlatMapKeepOrder`                | `(A) async -> Result<B, F>`                  | Like `AsyncFlatMap` with `concurrency:`, but keeps the source order.                                |
 | `Filter` / `AsyncFilter`               | `(A) -> Bool`                                | Keeps the values for which the closure returns `true`.                                              |
 | `CompactMap` / `AsyncCompactMap`       | `(A) -> B?`                                  | Changes each value, and removes `nil` results.                                                      |
 | `Take` / `Drop`                        | `Int`                                        | Keeps or skips the first `n` elements.                                                              |
@@ -687,11 +685,11 @@ func fetchArticles(
 | `TapMatch` / `AsyncTapMatch`           | `(pattern) { … } -> Void`                    | Runs a side effect only for the successes that match a pattern.                                     |
 | `TapMatchError` / `AsyncTapMatchError` | `(pattern) { … } -> Void`                    | Runs a side effect only for the failures that match a pattern.                                      |
 
-All `Async` stages except the tap stages take `concurrency:`.
+All `Async` stages except the tap stages take `concurrency:`, `ordered:` and `bufferLimit:`.
 
 ## Design
 
-A `Pipe<Success, Failure>` is an `AsyncSequence` of `Result<Success, Failure>`. Sinks only iterate it. A pipe stores how to build its stages, not their state. Each new iteration builds a new chain of stages, so pipes are `Sendable` and share no mutable state.
+A `Pipe<Success, Failure>` is an `AsyncSequence` of `Result<Success, Failure>`. A pipe stores how to build its stages, not their state. Each run builds a new chain of stages, so pipes are `Sendable` and share no mutable state.
 
 Each stage protocol says which types a stage fixes and which it leaves open ("any"):
 
@@ -704,11 +702,11 @@ Each stage protocol says which types a stage fixes and which it leaves open ("an
 | `PipeFlatErrorStage`  | fixed      | fixed, can change | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `GetOrElse`, `MatchError` |
 | `PipeFoldStage`       | `A` to `R` | `F` to `Never`    | `Match(onSuccess:onFailure:)`, `AsyncMatch(onSuccess:onFailure:)`     |
 
-The result builder has `buildPartialBlock` overloads for each of these protocols. One more overload widens a `Never` failure type, so a source that cannot fail works with stages that can.
+The result builder has a `buildPartialBlock` overload for each protocol. One more overload widens a `Never` failure type, so a source that cannot fail works with stages that can.
 
-Sources, stages and sinks are `@inlinable`, and each stage builds its iterator from concrete types. So the compiler specializes the whole pipe in the module that declares it. There is no allocation for each element, and each element costs one call for each stage. With `concurrency: 1` and `bufferSize: 1`, stages run in the reader's task, with no child tasks or buffers.
+Sources, stages and sinks are `@inlinable` and use concrete types, so the compiler specializes the whole pipe. There is no allocation for each element, and each element costs one call for each stage. With `concurrency: 1` and `bufferSize: 1`, stages run in the reader's task, with no child tasks or buffers.
 
-Benchmarks for allocations, reference counting and time of every source, stage and sink are in their own package, in [`Benchmarks/`](Benchmarks/README.md):
+The benchmarks measure allocations, reference counting and time for every source, stage and sink. They are in their own package, in [`Benchmarks/`](Benchmarks/README.md):
 
 ```bash
 cd Benchmarks && swift package benchmark

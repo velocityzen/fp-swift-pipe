@@ -125,7 +125,7 @@ func ifWithoutElseAbsentForwardingStageIsIdentity() async {
     let pipe = Pipe<Int, Never> {
         From([1, 2, 3, 4, 5])
         if dropFirst {
-            Drop(2)  // PipeForwardingStage — absent path returns accumulated unchanged
+            Drop(2)  // PipeForwardingStage. When skipped, elements pass through unchanged.
         }
     }
     let result = await pipe.toResult()
@@ -315,8 +315,7 @@ func ifElseWorksInsideOpenPipe() async {
 
 // MARK: - Branch bodies per stage shape
 //
-// An `if`/`else` branch whose body is a single stage routes through the stage-only
-// `buildPartialBlock(first:)` for that stage's protocol — one test per shape.
+// A branch with one stage uses the `buildPartialBlock(first:)` for that stage's protocol.
 
 @Test
 func ifElseWithFailureFixedStageBranches() async {

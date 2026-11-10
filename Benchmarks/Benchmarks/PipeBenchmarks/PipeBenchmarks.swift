@@ -2,9 +2,8 @@ import Benchmark
 import BenchmarkSupport
 import FPPipe
 
-// Sources, sinks and the fixed cost of a run. A pipeline rebuilds its chain
-// of stages every time it is iterated, so a short run of a long pipeline is
-// mostly that setup.
+// Sources, sinks and the fixed cost of a run. A pipe rebuilds its stages on every run, so
+// a short run of a long pipe is mostly setup.
 
 let benchmarks: @Sendable () -> Void = {
     // MARK: Setup

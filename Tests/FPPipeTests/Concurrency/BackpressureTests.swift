@@ -6,9 +6,8 @@ private enum E: Error, Equatable, Sendable { case bad }
 
 // MARK: - Unordered Async* stages stay bounded under a slow consumer
 //
-// Pattern: instant transforms over a large source, consumed slowly. Without backpressure the
-// producer races through the whole source while the consumer sleeps; with it, a slot is only
-// freed when the consumer takes a result, so `started` never exceeds `taken + concurrency`.
+// A slot frees up only when the slow reader takes a result, so `started` stays at or below
+// `taken + concurrency`.
 
 private let concurrency = 4
 
@@ -20,12 +19,12 @@ private func expectBounded<F: Error & Sendable>(
     var taken = 0
     for await _ in pipe {
         taken += 1
-        // Give a runaway producer every chance to show itself.
+        // Give a producer that ignores the limit time to run ahead.
         try? await Task.sleep(nanoseconds: 10_000_000)
         let total = started.withLock { $0 }
         #expect(
             total <= taken + concurrency,
-            "started \(total) after taking \(taken) — producer ran ahead of the consumer",
+            "started \(total) after taking \(taken): producer ran ahead of the consumer",
             sourceLocation: sourceLocation,
         )
         if taken == 5 { break }
@@ -86,8 +85,7 @@ func asyncCompactMapConcurrentIsBoundedBySlowConsumer() async {
 
 @Test
 func asyncMatchConcurrentIsBoundedBySlowConsumer() async {
-    // Unmatched elements pass through without a worker, but still hold a slot until the
-    // consumer takes them — so `started` counts the matcher, which runs as elements are read.
+    // Elements that do not match skip the task but still hold a slot, so count the check.
     let started = Mutex<Int>(0)
     let pipe = Pipe<Int, E> {
         From(0..<100_000)
@@ -105,8 +103,7 @@ func asyncMatchConcurrentIsBoundedBySlowConsumer() async {
 
 @Test
 func droppedElementsFreeTheirSlots() async {
-    // Every other element is dropped by the transform; dropped elements must give their slot
-    // back immediately or the stage would stall once `concurrency` of them were in flight.
+    // A dropped element must free its slot at once, or the stage gets stuck.
     let pipe = Pipe<Int, Never> {
         From(0..<1_000)
         AsyncCompactMap(concurrency: 2) { (n: Int) async -> Int? in
@@ -158,8 +155,7 @@ func asyncMapConcurrentEmitsBeforeSourceFillsTheWindow() async {
         }
     }
 
-    // One element only: the window (10) never fills, so a stage that primes the whole
-    // window or gates emission on the next source element would never emit.
+    // One element only. A stage that waits for more input before it gives a result hangs.
     continuation.yield(21)
     var waited = 0
     while first.withLock({ $0 }) == nil, waited < 200 {
@@ -210,7 +206,7 @@ func fromAsyncSyncSequenceReadsOnlyWhatIsConsumed() async {
         taken += 1
         try? await Task.sleep(nanoseconds: 5_000_000)
         let reads = counter.reads.withLock { $0 }
-        #expect(reads == taken, "read \(reads) after taking \(taken) — source ran ahead")
+        #expect(reads == taken, "read \(reads) after taking \(taken): source ran ahead")
         if taken == 3 { break }
     }
 }

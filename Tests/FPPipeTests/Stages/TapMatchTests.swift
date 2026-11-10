@@ -46,7 +46,7 @@ func tapMatchTypeSeesTheDowncastValue() async {
 
 @Test
 func tapMatchTypeFitsAFailablePipe() async {
-    // The type form is polymorphic in both channels, so it composes anywhere.
+    // The type form works with any failure type.
     let seen = Mutex<[Int]>([])
     let pipe = Pipe<Int, AppError> {
         From([1, 2, 3])

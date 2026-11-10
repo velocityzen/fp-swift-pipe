@@ -1,9 +1,6 @@
-// The examples that call URLSession, from "Calling throwing code" and "A complete
-// example", as Readme.md and the DocC articles in Sources/FPPipe/FPPipe.docc show them.
-// When you change an example, change it in all three places.
-//
-// They run on Apple platforms only. Linux's URLSession does not load file URLs, which the
-// complete example reads here instead of the network.
+// Examples from "Calling throwing code" and "A complete example" in Readme.md and the
+// DocC articles. Keep all three copies the same. Apple platforms only: on Linux,
+// URLSession cannot load the file URLs these tests use.
 
 #if canImport(Darwin)
 import FP
@@ -49,7 +46,7 @@ private func fetchArticles(
         From(urls)
 
         // 2. Download up to 4 at a time, and keep the source order.
-        AsyncFlatMapKeepOrder(concurrency: 4) { (url: URL) in
+        AsyncFlatMap(concurrency: 4, ordered: true) { (url: URL) in
             await Result.fromAsync {
                 try await URLSession.shared.data(from: url).0
             }
@@ -125,8 +122,7 @@ func readmeCallingThrowingCode() async throws {
     }
 }
 
-/// Foundation has its own `Pipe` type. Where both modules are imported, a `Pipe` in a
-/// type position needs the module name.
+/// Foundation also has a `Pipe` type, so a `Pipe` type here needs the module name.
 private func names(_ users: [User]) -> FPPipe.Pipe<String, Never> {
     Pipe<String, Never> {
         From(users)

@@ -142,8 +142,9 @@ let linkEdits: [(section: String, old: String, new: String)] = [
     ),
     ("Stage reference", "match a [pattern](#pattern-matching).", "match a pattern."),
     (
-        "Stage reference", "All `Async` stages except the tap stages take `concurrency:`.",
-        "All `Async` stages except the tap stages take `concurrency:`. <doc:PatternMatching> explains patterns."
+        "Stage reference",
+        "All `Async` stages except the tap stages take `concurrency:`, `ordered:` and `bufferLimit:`.",
+        "All `Async` stages except the tap stages take `concurrency:`, `ordered:` and `bufferLimit:`. <doc:PatternMatching> explains patterns."
     ),
     (
         "Design", "[`Benchmarks/`](Benchmarks/README.md)",

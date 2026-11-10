@@ -65,6 +65,6 @@ func fromAsyncIsReiterableAndAwaitsClosureFresh() async {
 
     #expect(first == .success([1, 2, 3]))
     #expect(second == .success([1, 2, 3]))
-    // Closure was awaited once per iteration.
+    // The closure ran once for each run.
     #expect(counter.withLock { $0 } == 2)
 }

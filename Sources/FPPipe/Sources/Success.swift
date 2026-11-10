@@ -1,4 +1,4 @@
-/// A source that emits a single `.success(value)` and finishes. Cannot fail.
+/// A source that gives one success and then finishes. It cannot fail.
 @usableFromInline
 struct SuccessSource<V: Sendable>: PipeSource {
     @usableFromInline typealias Output = V
@@ -18,14 +18,13 @@ struct SuccessSource<V: Sendable>: PipeSource {
     }
 }
 
-/// DSL: `Success(42)` — a one-shot source that always succeeds.
+/// Gives one success and then finishes. The source cannot fail.
 @inlinable
 public func Success<V: Sendable>(_ value: V) -> some PipeSource<V, Never> {
     SuccessSource(value)
 }
 
-/// DSL alias: `Of(42)` — equivalent to `Success(value)`. Familiar to readers
-/// from `Applicative.of` / `pure` in fp-swift's adjacent libraries.
+/// Gives one success and then finishes. The same as `Success(_:)`.
 @inlinable
 public func Of<V: Sendable>(_ value: V) -> some PipeSource<V, Never> {
     SuccessSource(value)

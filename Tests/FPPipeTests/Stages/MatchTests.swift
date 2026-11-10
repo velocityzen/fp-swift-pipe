@@ -21,7 +21,7 @@ func matchFoldsBothChannelsIntoOneType() async {
 
 @Test
 func matchOutputPipeCannotFail() async {
-    // After Match, Failure is Never — pipeline always succeeds at the type level.
+    // After `Match`, the failure type is `Never`.
     let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, AppError> in

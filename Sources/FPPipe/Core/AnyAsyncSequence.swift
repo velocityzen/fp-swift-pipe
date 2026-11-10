@@ -1,8 +1,6 @@
-/// A type-erased `AsyncSequence` whose iteration is built lazily on demand.
+/// An `AsyncSequence` that hides the type of the sequence it reads.
 ///
-/// Each call to `makeAsyncIterator()` invokes the stored builder, so the
-/// underlying chain is reconstructed per iteration. This keeps `Pipe`
-/// values re-iterable and free of shared mutable state.
+/// Each `makeAsyncIterator()` call builds a new iterator, so a pipe can run more than once.
 public struct AnyAsyncSequence<Element: Sendable>: AsyncSequence, Sendable {
     public typealias AsyncIterator = Iterator
 
@@ -24,8 +22,7 @@ public struct AnyAsyncSequence<Element: Sendable>: AsyncSequence, Sendable {
         _makeIterator()
     }
 
-    /// Erases a concrete iterator behind a closure. The closure is created where the
-    /// iterator's type is known, so the code it runs is specialized for that type.
+    /// The iterator of an `AnyAsyncSequence`.
     public struct Iterator: AsyncIteratorProtocol {
         @usableFromInline var _next: () async -> Element?
 
@@ -33,7 +30,7 @@ public struct AnyAsyncSequence<Element: Sendable>: AsyncSequence, Sendable {
         init<I: AsyncIteratorProtocol>(_ base: I) where I.Element == Element, I.Failure == Never {
             var iterator = base
             self._next = {
-                // Stays on the caller's isolation; `I.Failure == Never` makes it non-throwing.
+                // Stays on the caller's isolation. It cannot throw, because `I.Failure == Never`.
                 await iterator.next(isolation: #isolation)
             }
         }

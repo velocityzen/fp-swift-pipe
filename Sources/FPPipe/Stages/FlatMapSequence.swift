@@ -1,15 +1,6 @@
 import FP
 
-/// Expands each successful element into a sub-`Sequence` of values, concatenated
-/// in source order. Failures from upstream pass through unchanged.
-///
-/// With a `bufferSize` of 1 the expansion runs in lockstep with the consumer: each
-/// inner element is produced when the consumer asks for it, in the consumer's task.
-/// With a larger `bufferSize` a producer task runs ahead of the consumer by at most
-/// `bufferSize` elements: past that it suspends until the consumer catches up, so a
-/// huge inner sequence never lands in memory at once.
-///
-/// For async inner sequences, use `FlatMapAsyncSequence`.
+/// The stage that `FlatMapSequence` returns.
 @usableFromInline
 struct FlatMapSequenceStage<Input: Sendable, Inner: Sequence & Sendable>: PipePolyStage
 where Inner.Element: Sendable {
@@ -39,9 +30,8 @@ where Inner.Element: Sendable {
     }
 }
 
-/// Lockstep expansion: reads the next upstream element only once the current inner
-/// sequence is exhausted, and stops when the consuming task is cancelled. Above
-/// `bufferSize: 1` it runs in the read-ahead task rather than the consumer's.
+/// Reads the next input element only when the current inner sequence ends. With `bufferSize`
+/// above 1, it runs in the read-ahead task.
 @usableFromInline
 struct FlatMapSequenceIterator<Base: AsyncIteratorProtocol, Input, Inner: Sequence, F: Error>:
     AsyncIteratorProtocol
@@ -80,14 +70,12 @@ where Base.Element == Result<Input, F>, Base.Failure == Never {
     }
 }
 
-/// DSL: `FlatMapSequence { (n: Int) in 0..<n }`.
+/// Turns each value into a `Sequence`, and passes on all of its elements. Failures pass
+/// through unchanged.
 ///
-/// Expansion is backpressured: at most `bufferSize` inner elements are buffered ahead
-/// of the consumer; past that the expansion suspends until the consumer catches up, so
-/// a million-element inner `Range` never sits in memory at once. With the default of 1
-/// the expansion stays in lockstep with the consumer, running in the consumer's task;
-/// raise `bufferSize` to let a producer task read further ahead of a bursty consumer.
-/// Breaking out of iteration or cancelling the consumer stops the expansion promptly.
+/// `bufferSize` must be 1 or more. With the default of 1, nothing is made ahead of the
+/// reader. With a larger value, a separate task makes up to that many elements ahead. See
+/// <doc:TurningOneElementIntoMany>.
 @inlinable
 public func FlatMapSequence<Input: Sendable, Inner: Sequence & Sendable>(
     bufferSize: Int = 1,

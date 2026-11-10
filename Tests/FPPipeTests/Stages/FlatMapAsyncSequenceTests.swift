@@ -4,15 +4,14 @@ import Testing
 
 private enum AppError: Error, Equatable { case bad }
 
-/// Counts how many inner elements the transform actually vends — lets tests assert
-/// that expansion is bounded by backpressure rather than running to completion.
+/// Counts the inner elements the closure makes, to check that backpressure stops it.
 private final class Counter: Sendable {
     private let value = Mutex<Int>(0)
     func increment() { value.withLock { $0 += 1 } }
     var current: Int { value.withLock { $0 } }
 }
 
-/// Async `0..<upper` that counts each element as it is produced.
+/// An async `0..<upper` that counts each element it makes.
 private struct CountingAsyncRange: AsyncSequence, Sendable {
     typealias Element = Int
 
@@ -98,15 +97,12 @@ func flatMapAsyncSequenceExpansionIsBoundedByBufferSize() async {
 
     let result = await pipe.toResult()
     #expect(result == .success([0, 1, 2, 3, 4]))
-    // Invariant, not a race: the producer waits for a free slot before it expands the
-    // next element, so it never runs more than `bufferSize` ahead of the 5 consumed
-    // elements. The remaining ~987 elements are provably never produced.
+    // Not a race: the producer waits for a free slot, so it is at most `bufferSize` ahead.
     #expect(counter.current <= 5 + 8)
 }
 
 @Test
 func flatMapAsyncSequenceWithBufferSizeOneDeliversEverythingInOrder() async {
-    // Lockstep expansion of a large inner sequence: every element arrives, in order.
     let pipe = Pipe<Int, Never> {
         From([2_000])
         FlatMapAsyncSequence(bufferSize: 1) { (n: Int) in

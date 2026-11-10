@@ -3,10 +3,9 @@ import Testing
 
 private enum TestError: Error, Equatable { case bad }
 
-// A `PipeStage` that cannot fail (`Failure == Never`) after an upstream that cannot fail
-// either. Both the plain combine overload and the `Never`-widening one accept that pair,
-// so the builder needs an overload that is more specific than both — without it, each of
-// these pipes fails to compile with "ambiguous use of 'buildPartialBlock'".
+// A stage that cannot fail, after stages that cannot fail, matches two builder overloads.
+// Without a third, more specific one, these pipes fail with "ambiguous use of
+// 'buildPartialBlock'".
 
 @Test
 func neverFailingFlatMapComposesAfterNeverSource() async {
@@ -25,7 +24,7 @@ func neverFailingAsyncStagesComposeAfterNeverSource() async {
     let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         AsyncFlatMap { (n: Int) async -> Result<Int, Never> in .success(n + 1) }
-        AsyncFlatMapKeepOrder(concurrency: 2) { (n: Int) async -> Result<Int, Never> in
+        AsyncFlatMap(concurrency: 2, ordered: true) { (n: Int) async -> Result<Int, Never> in
             .success(n * 2)
         }
     }
@@ -49,7 +48,7 @@ func neverFailingMatchComposesAfterNeverSource() async {
 
 @Test
 func neverFailingStageComposesAfterRecoveryToNever() async {
-    // `GetOrElse` collapses the failure channel to `Never`; a Never-failing stage follows.
+    // `GetOrElse` sets the failure type to `Never`.
     let pipe = Pipe<Int, Never> {
         From([1, 2])
         FlatMap { (n: Int) -> Result<Int, TestError> in n == 2 ? .failure(.bad) : .success(n) }
@@ -62,7 +61,7 @@ func neverFailingStageComposesAfterRecoveryToNever() async {
 
 @Test
 func neverFailingStageStillWidensIntoALaterFailureChannel() async {
-    // The new overload must not stop a later failure-introducing stage from widening.
+    // A later stage that can fail must still set the failure type.
     let pipe = Pipe<Int, TestError> {
         From([1, 2])
         FlatMap { (n: Int) -> Result<Int, Never> in .success(n) }

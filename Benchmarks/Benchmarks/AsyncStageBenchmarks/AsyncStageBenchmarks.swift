@@ -2,11 +2,8 @@ import Benchmark
 import BenchmarkSupport
 import FPPipe
 
-// The asynchronous stages, sequential and at `concurrency: 8`, and the
-// stages that expand each element into a sequence. Transforms return at
-// once, so the numbers are the stage's own cost: the calls, child tasks and
-// hand-offs around the transform. "(baseline)" entries do the same job by
-// hand.
+// The async and expanding stages. The closures return at once, so the numbers show each
+// stage's own cost. "(baseline)" entries do the same job by hand.
 
 func twice(_ value: Int) async -> Int {
     value &* 2
@@ -16,8 +13,7 @@ let benchmarks: @Sendable () -> Void = {
     for n in [16, 1024] {
         let tags = ["n": "\(n)"]
         let results = ResultSequence(n)
-        // A run that hops between tasks for every element takes tens of
-        // microseconds or more at 1,024 elements, so it needs no inner loop.
+        // Switching tasks for every element makes a large run slow enough to need no `.kilo`.
         let scaling: BenchmarkScalingFactor = n > 64 ? .one : .kilo
 
         // MARK: Baselines
@@ -76,14 +72,32 @@ let benchmarks: @Sendable () -> Void = {
                 }
             }
 
-            let asyncMapKeepOrder = Pipe<Int, Never> {
+            let asyncMapOrdered = Pipe<Int, Never> {
                 From(0..<n)
-                AsyncMapKeepOrder(concurrency: concurrency) { (value: Int) async in value &* 2 }
+                AsyncMap(concurrency: concurrency, ordered: true) { (value: Int) async in
+                    value &* 2
+                }
             }
-            Benchmark("AsyncMapKeepOrder", configuration: .pipe(tags, scaling: scaling)) {
+            Benchmark("AsyncMap ordered", configuration: .pipe(tags, scaling: scaling)) {
                 benchmark in
                 for _ in benchmark.scaledIterations {
-                    blackHole(await drain(asyncMapKeepOrder))
+                    blackHole(await drain(asyncMapOrdered))
+                }
+            }
+
+            // A limit below `concurrency - 1` also lowers how many closures run at once.
+            let asyncMapOrderedLimited = Pipe<Int, Never> {
+                From(0..<n)
+                AsyncMap(concurrency: concurrency, ordered: true, bufferLimit: 4) {
+                    (value: Int) async in value &* 2
+                }
+            }
+            Benchmark(
+                "AsyncMap ordered",
+                configuration: .pipe(tags.merging(["bufferLimit": "4"]) { $1 }, scaling: scaling)
+            ) { benchmark in
+                for _ in benchmark.scaledIterations {
+                    blackHole(await drain(asyncMapOrderedLimited))
                 }
             }
 

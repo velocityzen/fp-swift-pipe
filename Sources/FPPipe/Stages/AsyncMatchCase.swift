@@ -1,9 +1,4 @@
-/// Asynchronous `Match(pattern)`: each success the pattern matches is replaced by the
-/// `Result` its async handler returns. Failures and non-matching successes pass through.
-///
-/// `concurrency` controls how many handlers run in parallel. Default 1 is strictly
-/// sequential. With `concurrency > 1` results emit as they complete (unordered), and
-/// elements the pattern doesn't match pass straight through without a worker.
+/// The stage behind `AsyncMatch(pattern) { … }`.
 @usableFromInline
 struct AsyncMatchCaseStage<Matcher: PipeMatcher, F: Error & Sendable>: PipeStage
 where Matcher.Subject: Sendable, Matcher.Payload: Sendable {
@@ -15,17 +10,24 @@ where Matcher.Subject: Sendable, Matcher.Payload: Sendable {
     @usableFromInline let matcher: Matcher
     @usableFromInline let handler: @Sendable (Matcher.Payload) async -> Result<Value, F>
     @usableFromInline let concurrency: Int
+    @usableFromInline let ordered: Bool
+    @usableFromInline let bufferLimit: Int
 
     @inlinable
     init(
         _ matcher: Matcher,
         concurrency: Int,
+        ordered: Bool,
+        bufferLimit: Int,
         _ handler: @escaping @Sendable (Matcher.Payload) async -> Result<Value, F>,
     ) {
         self.matcher = matcher
         self.handler = handler
         precondition(concurrency >= 1, "concurrency must be at least 1")
         self.concurrency = concurrency
+        self.ordered = ordered
+        precondition(bufferLimit >= 0, "bufferLimit must be at least 0")
+        self.bufferLimit = bufferLimit
     }
 
     @inlinable
@@ -34,53 +36,101 @@ where Matcher.Subject: Sendable, Matcher.Payload: Sendable {
         if concurrency == 1 {
             return .iterating { .init(AsyncStepIterator(upstream.makeAsyncIterator(), step: step)) }
         }
-        return upstream.matchAsyncUnordered(concurrency: concurrency, step)
+        return upstream.matchAsync(
+            concurrency: concurrency,
+            ordered: ordered,
+            bufferLimit: bufferLimit,
+            step
+        )
     }
 }
 
-/// DSL: `AsyncMatch(Response.unauthorized) { await session.refresh() }` — replaces each
-/// success equal to `value`.
+/// Replaces each success that equals `value` with the `Result` of `handler`.
+///
+/// Other elements pass through unchanged. Up to `concurrency` handlers run at the same time, and
+/// results come out in the order they finish, or in source order with `ordered: true`.
+/// `bufferLimit` works as in `AsyncMap`. See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatch<Value: Equatable & Sendable, F: Error & Sendable>(
     _ value: Value,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable () async -> Result<Value, F>,
 ) -> some PipeStage<Value, Value, F> {
-    AsyncMatchCaseStage(EqualMatcher(value), concurrency: concurrency, handler)
+    AsyncMatchCaseStage(
+        EqualMatcher(value),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }
 
-/// DSL: `AsyncMatch(Thumbnail.self) { t async -> Result<any Asset, AppError> in … }` —
-/// replaces each success that is a `T`, handing the handler the downcast value.
+/// Replaces each success that is a `T` with the `Result` of `handler`.
 ///
-/// Only the handler's return type names the pipe's value and failure types, so spell it
-/// out unless the body already does.
+/// The handler gets the value cast to `T`. Other elements pass through unchanged. Up to
+/// `concurrency` handlers run at the same time, and results come out in the order they finish,
+/// or in source order with `ordered: true`. `bufferLimit` works as in `AsyncMap`.
+/// Write the handler's return type, like `t async -> Result<any Asset, AppError> in`.
+/// See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatch<Value: Sendable, T: Sendable, F: Error & Sendable>(
     _ type: T.Type,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable (T) async -> Result<Value, F>,
 ) -> some PipeStage<Value, Value, F> {
-    AsyncMatchCaseStage(CastMatcher<Value, T>(), concurrency: concurrency, handler)
+    AsyncMatchCaseStage(
+        CastMatcher<Value, T>(),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }
 
-/// DSL: `AsyncMatch(where: { (p: Page) in p.isStale }, then: { p in await refetch(p) })`
-/// — replaces each success the predicate accepts.
+/// Replaces each success for which `predicate` returns `true` with the `Result` of `handler`.
+///
+/// Other elements pass through unchanged. Up to `concurrency` handlers run at the same time, and
+/// results come out in the order they finish, or in source order with `ordered: true`.
+/// `bufferLimit` works as in `AsyncMap`. See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatch<Value: Sendable, F: Error & Sendable>(
     where predicate: @escaping @Sendable (Value) -> Bool,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable (Value) async -> Result<Value, F>,
 ) -> some PipeStage<Value, Value, F> {
-    AsyncMatchCaseStage(PredicateMatcher(predicate), concurrency: concurrency, handler)
+    AsyncMatchCaseStage(
+        PredicateMatcher(predicate),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }
 
-/// DSL: `AsyncMatch(extract: \Event.redirect) { url in await follow(url) }` — replaces each
-/// success the extractor returns a payload for, handing the handler that payload.
+/// Replaces each success for which `extract` returns a payload with the `Result` of `handler`.
+///
+/// The handler gets the payload. Other elements pass through unchanged. Up to `concurrency`
+/// handlers run at the same time, and results come out in the order they finish, or in source
+/// order with `ordered: true`. `bufferLimit` works as in `AsyncMap`. See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatch<Value: Sendable, Payload: Sendable, F: Error & Sendable>(
     extract: @escaping @Sendable (Value) -> Payload?,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable (Payload) async -> Result<Value, F>,
 ) -> some PipeStage<Value, Value, F> {
-    AsyncMatchCaseStage(ExtractMatcher(extract), concurrency: concurrency, handler)
+    AsyncMatchCaseStage(
+        ExtractMatcher(extract),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }

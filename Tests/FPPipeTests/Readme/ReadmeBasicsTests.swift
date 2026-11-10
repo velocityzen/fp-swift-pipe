@@ -1,6 +1,5 @@
-// The examples from "Quick start" to "Open pipes", as Readme.md and the DocC articles
-// in Sources/FPPipe/FPPipe.docc show them.
-// When you change an example, change it in all three places.
+// Examples from "Quick start" to "Open pipes" in Readme.md and the DocC articles. Keep
+// all three copies the same.
 
 import FPPipe
 import Testing

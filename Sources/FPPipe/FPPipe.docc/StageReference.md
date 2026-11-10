@@ -8,8 +8,6 @@ Every stage, the closure it takes, and what it does.
 | -------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `Map` / `AsyncMap`                     | `(A) -> B`                                   | Changes each value.                                                                                 |
 | `FlatMap` / `AsyncFlatMap`             | `(A) -> Result<B, F>`                        | Changes each value. It can turn a value into a failure.                                             |
-| `AsyncMapKeepOrder`                    | `(A) async -> B`                             | Like `AsyncMap` with `concurrency:`, but keeps the source order.                                    |
-| `AsyncFlatMapKeepOrder`                | `(A) async -> Result<B, F>`                  | Like `AsyncFlatMap` with `concurrency:`, but keeps the source order.                                |
 | `Filter` / `AsyncFilter`               | `(A) -> Bool`                                | Keeps the values for which the closure returns `true`.                                              |
 | `CompactMap` / `AsyncCompactMap`       | `(A) -> B?`                                  | Changes each value, and removes `nil` results.                                                      |
 | `Take` / `Drop`                        | `Int`                                        | Keeps or skips the first `n` elements.                                                              |
@@ -27,6 +25,6 @@ Every stage, the closure it takes, and what it does.
 | `TapMatch` / `AsyncTapMatch`           | `(pattern) { … } -> Void`                    | Runs a side effect only for the successes that match a pattern.                                     |
 | `TapMatchError` / `AsyncTapMatchError` | `(pattern) { … } -> Void`                    | Runs a side effect only for the failures that match a pattern.                                      |
 
-All `Async` stages except the tap stages take `concurrency:`. <doc:PatternMatching> explains patterns.
+All `Async` stages except the tap stages take `concurrency:`, `ordered:` and `bufferLimit:`. <doc:PatternMatching> explains patterns.
 
 <!-- Made from Readme.md by Scripts/make-docc-articles.swift. Edit Readme.md, then run the script. -->

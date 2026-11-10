@@ -1,4 +1,4 @@
-/// A source backed by an `AsyncSequence` whose elements are already `Result`s.
+/// A source that reads an `AsyncSequence` of `Result`s and gives each element unchanged.
 @usableFromInline
 struct ResultAsyncSequenceSource<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>:
     PipeSource
@@ -20,8 +20,7 @@ where S.Element == Result<V, E>, S.Failure == Never {
     }
 }
 
-/// A source backed by an `AsyncSequence` of bare values; each value is lifted into `.success`
-/// in a single iterator hop (no intermediate `AsyncMapSequence`).
+/// A source that reads an `AsyncSequence` and gives each element as a success.
 @usableFromInline
 struct LiftedAsyncSequenceSource<S: AsyncSequence & Sendable>: PipeSource
 where S.Element: Sendable, S.Failure == Never {
@@ -42,8 +41,8 @@ where S.Element: Sendable, S.Failure == Never {
     }
 }
 
-/// A source backed by a synchronous `Sequence`; each value is lifted into `.success`
-/// in a single iterator hop (no `AsyncSyncSequence` + `AsyncMapSequence` double-bridging).
+/// A source that reads a `Sequence` and gives each element as a success. It reads the
+/// sequence directly, without first turning it into an `AsyncSequence`.
 @usableFromInline
 struct SyncSequenceSource<S: Sequence & Sendable>: PipeSource
 where S.Element: Sendable {
@@ -66,25 +65,14 @@ where S.Element: Sendable {
 
 // MARK: - DSL factories
 
-/// Lift an `AsyncSequence` of bare values into a pipeline source (each value becomes `.success`).
+/// Gives each element of an `AsyncSequence` as a success.
 ///
-/// `From(expr)` evaluates `expr` lazily on each iteration. The autoclosure captures the
-/// *expression*, not a constructor — passing a stored reference to a single-shot
-/// `AsyncSequence` (e.g. an `AsyncStream` you constructed once) will make the second
-/// iteration of the pipe yield empty results without warning, because the underlying
-/// iterator has already been consumed. For non-replayable sources, use `Defer { … }`,
-/// which re-invokes the closure per iteration:
+/// A stored sequence that can be read only once, like an `AsyncStream`, is empty on the second
+/// run of the pipe, and there is no error. Create it inside `Defer` instead:
 ///
 /// ```swift
-/// // Wrong — second iteration yields empty, no diagnostic.
-/// let stream = AsyncStream<Int> { … }
-/// let pipe = Pipe { From(stream); Map { … } }
-///
-/// // Right — Defer constructs a fresh stream per iteration.
-/// let pipe = Pipe { Defer { AsyncStream<Int> { … } }; Map { … } }
+/// Defer { makeStream() }   // a new stream on every run
 /// ```
-///
-/// `Array`, `Range`, and other replayable sources work fine with `From`.
 @inlinable
 public func From<S: AsyncSequence & Sendable>(
     _ source: @autoclosure @escaping @Sendable () -> S,
@@ -92,7 +80,10 @@ public func From<S: AsyncSequence & Sendable>(
     LiftedAsyncSequenceSource(source)
 }
 
-/// Lift an `AsyncSequence` of `Result` elements into a pipeline source.
+/// Gives each element of an `AsyncSequence` of `Result`s, unchanged.
+///
+/// A pipe can read another pipe this way. For a sequence that can be read only once, use
+/// `DeferResult`.
 @inlinable
 public func FromResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>(
     _ source: @autoclosure @escaping @Sendable () -> S,
@@ -100,7 +91,7 @@ public func FromResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Send
     ResultAsyncSequenceSource(source)
 }
 
-/// Lift a synchronous `Sequence` into a pipeline source.
+/// Gives each element of a `Sequence` as a success.
 @inlinable
 public func From<S: Sequence & Sendable>(
     _ source: @autoclosure @escaping @Sendable () -> S,
@@ -108,18 +99,13 @@ public func From<S: Sequence & Sendable>(
     SyncSequenceSource(source)
 }
 
-/// Open-source marker — declares an `Input` type to be supplied at call time. The enclosing
-/// `OpenPipe { … }` builder produces an `OpenPipe<Input, …, …>` that's callable as
-/// `pipe(source)`.
+/// Starts an open pipe whose input has the type `Input`. See <doc:OpenPipes>.
 @inlinable
 public func From<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
     OpenSource<Input>()
 }
 
-/// Open-source marker for a Result-bearing input — declares an inner value/failure type
-/// to be supplied at call time as an `AsyncSequence<Result<V, E>>` (or `Sequence`). The
-/// enclosing `OpenPipe { … }` builder produces an `OpenPipe<Result<V, E>, V, E>` whose
-/// downstream stages see unwrapped successes and failures lifted into the channel.
+/// Starts an open pipe whose input is a sequence of `Result<V, E>`. See <doc:OpenPipes>.
 @inlinable
 public func FromResult<V: Sendable, E: Error & Sendable>(
     _: V.Type,
@@ -130,9 +116,8 @@ public func FromResult<V: Sendable, E: Error & Sendable>(
 
 // MARK: - Deferred sources (non-autoclosure form)
 
-/// Defer construction of an `AsyncSequence` source until the pipeline is iterated.
-/// Each iteration invokes the closure afresh — useful for sources that aren't
-/// re-iterable (e.g. an `AsyncStream` you build from a fresh continuation).
+/// Gives each element of an `AsyncSequence` that the closure creates, as a success. The
+/// closure runs again on every run of the pipe.
 @inlinable
 public func Defer<S: AsyncSequence & Sendable>(
     _ make: @escaping @Sendable () -> S,
@@ -140,7 +125,8 @@ public func Defer<S: AsyncSequence & Sendable>(
     LiftedAsyncSequenceSource(make)
 }
 
-/// Deferred form of `FromResult` for `Result`-bearing sequences.
+/// Gives each element of an `AsyncSequence` of `Result`s that the closure creates. The
+/// closure runs again on every run of the pipe.
 @inlinable
 public func DeferResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>(
     _ make: @escaping @Sendable () -> S,
@@ -148,7 +134,8 @@ public func DeferResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sen
     ResultAsyncSequenceSource(make)
 }
 
-/// Deferred form of `From` for synchronous sequences.
+/// Gives each element of a `Sequence` that the closure creates, as a success. The closure
+/// runs again on every run of the pipe.
 @inlinable
 public func Defer<S: Sequence & Sendable>(
     _ make: @escaping @Sendable () -> S,
@@ -158,7 +145,7 @@ public func Defer<S: Sequence & Sendable>(
 
 // MARK: - Internal lifting bridges
 
-/// Reads a synchronous `Sequence` and yields `Result.success(element)` per element.
+/// Reads a `Sequence` and gives each element as a success.
 @usableFromInline
 struct LiftingSyncIterator<Base: IteratorProtocol>: AsyncIteratorProtocol {
     @usableFromInline var base: Base
@@ -180,7 +167,7 @@ struct LiftingSyncIterator<Base: IteratorProtocol>: AsyncIteratorProtocol {
     }
 }
 
-/// Reads an `AsyncSequence` and yields `Result.success(element)` per element.
+/// Reads an `AsyncSequence` and gives each element as a success.
 @usableFromInline
 struct LiftingAsyncIterator<Base: AsyncIteratorProtocol>: AsyncIteratorProtocol
 where Base.Failure == Never {
@@ -199,7 +186,7 @@ where Base.Failure == Never {
     @inlinable
     mutating func next(isolation actor: isolated (any Actor)?) async -> Result<Base.Element, Never>?
     {
-        // Stays on the caller's isolation; `Base.Failure == Never` makes it non-throwing.
+        // Stays on the caller's actor. It cannot throw (`Base.Failure == Never`).
         guard let element = await base.next(isolation: actor) else { return nil }
         return .success(element)
     }

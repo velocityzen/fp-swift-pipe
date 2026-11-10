@@ -15,7 +15,7 @@ func tapErrorObservesEveryFailure() async {
         TapError { (e: AppError) in observed.withLock { $0.append(e) } }
     }
 
-    // Drain by iterating manually so we observe both failures (toResult short-circuits).
+    // `toResult()` stops at the first failure, so read with `for await`.
     var seen: [Result<Int, AppError>] = []
     for await element in pipe {
         seen.append(element)

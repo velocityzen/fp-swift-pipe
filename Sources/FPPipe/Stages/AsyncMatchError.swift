@@ -1,9 +1,4 @@
-/// Asynchronous `MatchError`: each failure the pattern matches is replaced by the
-/// `Result` its async handler returns. Successes and non-matching failures pass through.
-///
-/// `concurrency` controls how many handlers run in parallel. Default 1 is strictly
-/// sequential. With `concurrency > 1` results emit as they complete (unordered), and
-/// elements the pattern doesn't match pass straight through without a worker.
+/// The stage behind `AsyncMatchError(pattern) { … }`.
 @usableFromInline
 struct AsyncMatchErrorStage<Value: Sendable, Matcher: PipeMatcher>: PipeFlatErrorStage
 where Matcher.Subject: Error & Sendable, Matcher.Payload: Sendable {
@@ -14,17 +9,24 @@ where Matcher.Subject: Error & Sendable, Matcher.Payload: Sendable {
     @usableFromInline let matcher: Matcher
     @usableFromInline let handler: @Sendable (Matcher.Payload) async -> Result<Value, F>
     @usableFromInline let concurrency: Int
+    @usableFromInline let ordered: Bool
+    @usableFromInline let bufferLimit: Int
 
     @inlinable
     init(
         _ matcher: Matcher,
         concurrency: Int,
+        ordered: Bool,
+        bufferLimit: Int,
         _ handler: @escaping @Sendable (Matcher.Payload) async -> Result<Value, F>,
     ) {
         self.matcher = matcher
         self.handler = handler
         precondition(concurrency >= 1, "concurrency must be at least 1")
         self.concurrency = concurrency
+        self.ordered = ordered
+        precondition(bufferLimit >= 0, "bufferLimit must be at least 0")
+        self.bufferLimit = bufferLimit
     }
 
     @inlinable
@@ -33,54 +35,101 @@ where Matcher.Subject: Error & Sendable, Matcher.Payload: Sendable {
         if concurrency == 1 {
             return .iterating { .init(AsyncStepIterator(upstream.makeAsyncIterator(), step: step)) }
         }
-        return upstream.matchAsyncUnordered(concurrency: concurrency, step)
+        return upstream.matchAsync(
+            concurrency: concurrency,
+            ordered: ordered,
+            bufferLimit: bufferLimit,
+            step
+        )
     }
 }
 
-/// DSL: `AsyncMatchError(AppError.rateLimited) { await cache.fallback() }` — replaces each
-/// failure equal to `error`.
+/// Recovers from, or fails again on, each failure that equals `error`.
+///
+/// Other elements pass through unchanged. Up to `concurrency` handlers run at the same time, and
+/// results come out in the order they finish, or in source order with `ordered: true`.
+/// `bufferLimit` works as in `AsyncMap`. See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatchError<Value: Sendable, F: Error & Equatable & Sendable>(
     _ error: F,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable () async -> Result<Value, F>,
 ) -> some PipeFlatErrorStage<Value, F, F> {
-    AsyncMatchErrorStage(EqualMatcher(error), concurrency: concurrency, handler)
+    AsyncMatchErrorStage(
+        EqualMatcher(error),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }
 
-/// DSL: `AsyncMatchError(URLError.self) { e async -> Result<Data, any Error> in … }` —
-/// replaces each failure that is an `E`, handing the handler the downcast error.
+/// Recovers from, or fails again on, each failure that is an `E`.
 ///
-/// Only the handler's return type names the pipe's value and failure types, so spell it
-/// out unless the body already does.
+/// The handler gets the error cast to `E`. Other elements pass through unchanged. Up to
+/// `concurrency` handlers run at the same time, and results come out in the order they finish,
+/// or in source order with `ordered: true`. `bufferLimit` works as in `AsyncMap`.
+/// Write the handler's return type, like `e async -> Result<Data, any Error> in`.
+/// See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatchError<Value: Sendable, F: Error & Sendable, E: Error>(
     _ type: E.Type,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable (E) async -> Result<Value, F>,
 ) -> some PipeFlatErrorStage<Value, F, F> {
-    AsyncMatchErrorStage(CastMatcher<F, E>(), concurrency: concurrency, handler)
+    AsyncMatchErrorStage(
+        CastMatcher<F, E>(),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }
 
-/// DSL: `AsyncMatchError(where: \AppError.isRetryable) { e in await retry(e) }` — replaces
-/// each failure the predicate accepts.
+/// Recovers from, or fails again on, each failure for which `predicate` returns `true`.
+///
+/// Other elements pass through unchanged. Up to `concurrency` handlers run at the same time, and
+/// results come out in the order they finish, or in source order with `ordered: true`.
+/// `bufferLimit` works as in `AsyncMap`. See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatchError<Value: Sendable, F: Error & Sendable>(
     where predicate: @escaping @Sendable (F) -> Bool,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable (F) async -> Result<Value, F>,
 ) -> some PipeFlatErrorStage<Value, F, F> {
-    AsyncMatchErrorStage(PredicateMatcher(predicate), concurrency: concurrency, handler)
+    AsyncMatchErrorStage(
+        PredicateMatcher(predicate),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }
 
-/// DSL: `AsyncMatchError(extract: \AppError.retryAfter) { delay in await retry(after: delay) }`
-/// — replaces each failure the extractor returns a payload for, handing the handler that
-/// payload.
+/// Recovers from, or fails again on, each failure for which `extract` returns a payload.
+///
+/// The handler gets the payload. Other elements pass through unchanged. Up to `concurrency`
+/// handlers run at the same time, and results come out in the order they finish, or in source
+/// order with `ordered: true`. `bufferLimit` works as in `AsyncMap`. See <doc:PatternMatching>.
 @inlinable
 public func AsyncMatchError<Value: Sendable, F: Error & Sendable, Payload: Sendable>(
     extract: @escaping @Sendable (F) -> Payload?,
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     then handler: @escaping @Sendable (Payload) async -> Result<Value, F>,
 ) -> some PipeFlatErrorStage<Value, F, F> {
-    AsyncMatchErrorStage(ExtractMatcher(extract), concurrency: concurrency, handler)
+    AsyncMatchErrorStage(
+        ExtractMatcher(extract),
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit,
+        handler
+    )
 }

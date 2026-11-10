@@ -1,4 +1,4 @@
-/// Maps the success channel; produced `nil`s are dropped. Failures pass through.
+/// The stage that `CompactMap` returns.
 @usableFromInline
 struct CompactMapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
     @usableFromInline let transform: @Sendable (Input) -> Output?
@@ -35,7 +35,7 @@ struct CompactMapStep<Input, Output, F: Error>: PipeStep {
     }
 }
 
-/// DSL: `CompactMap { Int($0) }`.
+/// Changes each value, and removes the `nil` results. Failures pass through unchanged.
 @inlinable
 public func CompactMap<Input: Sendable, Output: Sendable>(
     _ transform: @escaping @Sendable (Input) -> Output?,

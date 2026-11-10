@@ -1,7 +1,4 @@
-/// A `switch` over the failure channel: each failure the pattern matches is replaced by
-/// the `Result` its handler returns — recover with `.success`, re-fail (with another
-/// error) with `.failure`. Successes and non-matching failures pass through unchanged,
-/// so the value and failure types are preserved.
+/// The stage behind `MatchError(pattern) { … }`.
 @usableFromInline
 struct MatchErrorStage<Value: Sendable, Matcher: PipeMatcher>: PipeFlatErrorStage
 where Matcher.Subject: Error & Sendable {
@@ -25,8 +22,9 @@ where Matcher.Subject: Error & Sendable {
     }
 }
 
-/// DSL: `MatchError(AppError.rateLimited) { .success(Article.placeholder) }` — replaces each
-/// failure equal to `error`.
+/// Recovers from, or fails again on, each failure that equals `error`.
+///
+/// Other elements pass through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func MatchError<Value: Sendable, F: Error & Equatable & Sendable>(
     _ error: F,
@@ -35,11 +33,10 @@ public func MatchError<Value: Sendable, F: Error & Equatable & Sendable>(
     MatchErrorStage(EqualMatcher(error), handler)
 }
 
-/// DSL: `MatchError(URLError.self) { e -> Result<Data, any Error> in .success(cached) }` —
-/// replaces each failure that is an `E`, handing the handler the downcast error.
+/// Recovers from, or fails again on, each failure that is an `E`.
 ///
-/// Only the handler's return type names the pipe's value and failure types, so spell it
-/// out unless the body already does.
+/// The handler gets the error cast to `E`. Other elements pass through unchanged. Write the
+/// handler's return type, like `e -> Result<Data, any Error> in`. See <doc:PatternMatching>.
 @inlinable
 public func MatchError<Value: Sendable, F: Error & Sendable, E: Error>(
     _ type: E.Type,
@@ -48,8 +45,9 @@ public func MatchError<Value: Sendable, F: Error & Sendable, E: Error>(
     MatchErrorStage(CastMatcher<F, E>(), handler)
 }
 
-/// DSL: `MatchError(where: \AppError.isRetryable) { e -> Result<Item, AppError> in … }` —
-/// replaces each failure the predicate accepts.
+/// Recovers from, or fails again on, each failure for which `predicate` returns `true`.
+///
+/// Other elements pass through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func MatchError<Value: Sendable, F: Error & Sendable>(
     where predicate: @escaping @Sendable (F) -> Bool,
@@ -58,9 +56,9 @@ public func MatchError<Value: Sendable, F: Error & Sendable>(
     MatchErrorStage(PredicateMatcher(predicate), handler)
 }
 
-/// DSL: `MatchError(extract: \AppError.statusCode) { code in .success(Page.error(code)) }` —
-/// replaces each failure the extractor returns a payload for (typically one enum case's
-/// associated value), handing the handler that payload.
+/// Recovers from, or fails again on, each failure for which `extract` returns a payload.
+///
+/// The handler gets the payload. Other elements pass through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func MatchError<Value: Sendable, F: Error & Sendable, Payload>(
     extract: @escaping @Sendable (F) -> Payload?,

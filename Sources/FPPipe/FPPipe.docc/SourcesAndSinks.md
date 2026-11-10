@@ -6,15 +6,15 @@ Put elements into a pipe, and read the results out of it.
 
 A source is always the first line of a pipe.
 
-| Source                                                   | Gives                                                                                                                                                                       |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `From(sequence)`                                         | Each element of a `Sequence` or `AsyncSequence`, as a success.                                                                                                              |
-| `FromResult(sequence)`                                   | Each element of an `AsyncSequence` of `Result`s, unchanged. A pipe is such a sequence, so a pipe can read another pipe.                                                     |
-| `Success(value)` or `Of(value)`                          | One success.                                                                                                                                                                |
-| `Failure(error, valueType:)`                             | One failure.                                                                                                                                                                |
-| `Empty(valueType:failureType:)`                          | No elements.                                                                                                                                                                |
-| `Defer { … }` or `DeferResult { … }`                     | The elements of a sequence that the closure creates. The closure runs again on every run of the pipe.                                                                       |
-| `FromAsync { await … }` or `FromAsyncResult { await … }` | Like `Defer`, but the closure is `async`, for example to open a database cursor. It runs when the first element is needed. The sequence is then read one element at a time. |
+| Source                                                   | Gives                                                                                           |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `From(sequence)`                                         | Each element of a `Sequence` or `AsyncSequence`, as a success.                                  |
+| `FromResult(sequence)`                                   | Each element of an `AsyncSequence` of `Result`s, unchanged. It can read another pipe.           |
+| `Success(value)` or `Of(value)`                          | One success.                                                                                    |
+| `Failure(error, valueType:)`                             | One failure.                                                                                    |
+| `Empty(valueType:failureType:)`                          | No elements.                                                                                    |
+| `Defer { … }` or `DeferResult { … }`                     | The elements of a sequence that the closure creates. The closure runs on every run of the pipe. |
+| `FromAsync { await … }` or `FromAsyncResult { await … }` | Like `Defer`, but the closure is `async`. It runs when the first element is needed.             |
 
 ```swift
 From([1, 2, 3])                         // an array
@@ -29,7 +29,7 @@ FromAsync { await database.userIDs() }  // made by async code
 
 A pipe does not save its results. Each time you read it, it reads its source again. An array or a range gives the same elements every time.
 
-A sequence that can be read only once, like a stored `AsyncStream`, is empty the second time, and there is no error. To avoid this, create the sequence inside `Defer`, so every run gets a new one:
+A sequence that can be read only once, like a stored `AsyncStream`, is empty the second time, with no error. Create it inside `Defer` instead, so every run gets a new one:
 
 ```swift
 let pipe = Pipe<Int, Never> {
@@ -52,7 +52,7 @@ A sink reads the pipe and returns the results.
 | `await pipe.firstError()`             | `Failure?`                                                   | at the first failure      |
 | `for await element in pipe`           | one `Result` at a time                                       | at `break`, or at the end |
 
-When a sink stops reading, the pipe stops working too. No more elements are read from the source.
+When a sink stops reading, the pipe stops reading the source too.
 
 ```swift
 let counts = Pipe<Int, Never> { From(1...4) }

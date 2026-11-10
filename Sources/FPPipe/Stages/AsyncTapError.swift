@@ -1,5 +1,4 @@
-/// Asynchronously observes failures and passes them through unchanged.
-/// Successes are not observed.
+/// The stage that `AsyncTapError` returns.
 @usableFromInline
 struct AsyncTapErrorStage<F: Error & Sendable>: PipePolyValueStage {
     @usableFromInline typealias InputFailure = F
@@ -37,7 +36,10 @@ struct AsyncTapErrorStep<Value, F: Error>: AsyncPipeStep {
     }
 }
 
-/// DSL: `AsyncTapError { (e: AppError) in await report(e) }`.
+/// Runs an async side effect for each failure, like logging. The failure does not change.
+///
+/// Successes pass through unchanged. The closure handles one failure at a time, so side
+/// effects happen in order.
 @inlinable
 public func AsyncTapError<F: Error & Sendable>(
     _ action: @escaping @Sendable (F) async -> Void,

@@ -1,5 +1,4 @@
-/// A source that finishes immediately with no elements. Both type parameters must
-/// be supplied at the call site since no value is ever produced.
+/// A source that gives no elements and finishes at once.
 @usableFromInline
 struct EmptySource<V: Sendable, F: Error & Sendable>: PipeSource {
     @usableFromInline typealias Output = V
@@ -14,8 +13,7 @@ struct EmptySource<V: Sendable, F: Error & Sendable>: PipeSource {
     }
 }
 
-/// DSL: `Empty(valueType: Int.self, failureType: AppError.self)` — a source that finishes
-/// without emitting. Both type parameters must be supplied since no value is ever produced.
+/// Gives no elements and finishes at once.
 @inlinable
 public func Empty<V: Sendable, F: Error & Sendable>(
     valueType _: V.Type,
@@ -24,8 +22,7 @@ public func Empty<V: Sendable, F: Error & Sendable>(
     EmptySource()
 }
 
-/// Yields its element, if it has one, then finishes — the iterator behind `Success`,
-/// `Failure` and `Empty`.
+/// Gives one element or none, and then finishes. Used by `Success`, `Failure` and `Empty`.
 @usableFromInline
 struct OneElementIterator<Element>: AsyncIteratorProtocol {
     @usableFromInline var element: Element?

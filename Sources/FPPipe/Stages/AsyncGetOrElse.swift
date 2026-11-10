@@ -1,11 +1,6 @@
 import FP
 
-/// Asynchronously replace each `.failure` with a `Success` derived from the error.
-/// The output pipeline cannot fail (`Failure == Never`). Mirrors fp-swift's
-/// `Result.getOrElseAsync`.
-///
-/// `concurrency` controls how many fallbacks run in parallel. Default 1 is strictly
-/// sequential. With `concurrency > 1` results emit as they complete (unordered).
+/// The stage that `AsyncGetOrElse` returns.
 @usableFromInline
 struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
     @usableFromInline typealias InputFailure = F
@@ -13,12 +8,22 @@ struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorS
 
     @usableFromInline let onFailure: @Sendable (F) async -> Value
     @usableFromInline let concurrency: Int
+    @usableFromInline let ordered: Bool
+    @usableFromInline let bufferLimit: Int
 
     @inlinable
-    init(_ onFailure: @escaping @Sendable (F) async -> Value, concurrency: Int) {
+    init(
+        _ onFailure: @escaping @Sendable (F) async -> Value,
+        concurrency: Int,
+        ordered: Bool,
+        bufferLimit: Int
+    ) {
         self.onFailure = onFailure
         precondition(concurrency >= 1, "concurrency must be at least 1")
         self.concurrency = concurrency
+        self.ordered = ordered
+        precondition(bufferLimit >= 0, "bufferLimit must be at least 0")
+        self.bufferLimit = bufferLimit
     }
 
     @inlinable
@@ -28,14 +33,15 @@ struct AsyncGetOrElseStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorS
             return .iterating { .init(AsyncStepIterator(upstream.makeAsyncIterator(), step: step)) }
         }
         let concurrency = self.concurrency
+        let ordered = self.ordered
+        let bufferLimit = self.bufferLimit
         return .iterating {
-            .init(
-                upstream.compactMapAsyncUnordered(
-                    concurrency: concurrency,
-                    passthrough: { $0.passthroughSuccess() },
-                    { element in await step(element) },
-                )
-                .makeAsyncIterator(),
+            upstream.compactMapAsyncIterator(
+                concurrency: concurrency,
+                ordered: ordered,
+                bufferLimit: bufferLimit,
+                passthrough: { $0.passthroughSuccess() },
+                { element in await step(element) },
             )
         }
     }
@@ -56,11 +62,21 @@ struct AsyncGetOrElseStep<Value, F: Error>: AsyncPipeStep {
     }
 }
 
-/// DSL: `AsyncGetOrElse { (e: AppError) async in await fetchFallback() }`.
+/// Replaces each failure with a value that an async closure makes from the error.
+///
+/// After this stage, the pipe cannot fail. `concurrency`, `ordered` and `bufferLimit` work as in
+/// `AsyncMap`.
 @inlinable
 public func AsyncGetOrElse<Value: Sendable, F: Error & Sendable>(
     concurrency: Int = 1,
+    ordered: Bool = false,
+    bufferLimit: Int = .max,
     _ onFailure: @escaping @Sendable (F) async -> Value,
 ) -> some PipeFlatErrorStage<Value, F, Never> {
-    AsyncGetOrElseStage(onFailure, concurrency: concurrency)
+    AsyncGetOrElseStage(
+        onFailure,
+        concurrency: concurrency,
+        ordered: ordered,
+        bufferLimit: bufferLimit
+    )
 }

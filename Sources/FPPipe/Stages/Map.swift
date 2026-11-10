@@ -1,6 +1,4 @@
-/// Maps the success channel via a pure function. Failures pass through unchanged.
-///
-/// `Map` is failure-polymorphic — it works with any failure type the upstream defines.
+/// The stage that `Map` returns.
 @usableFromInline
 struct MapStage<Input: Sendable, Output: Sendable>: PipePolyStage {
     @usableFromInline let transform: @Sendable (Input) -> Output
@@ -32,7 +30,7 @@ struct MapStep<Input, Output, F: Error>: PipeStep {
     }
 }
 
-/// DSL: `Map { $0 + 1 }`.
+/// Changes each value. Failures pass through unchanged.
 @inlinable
 public func Map<Input: Sendable, Output: Sendable>(
     _ transform: @escaping @Sendable (Input) -> Output,

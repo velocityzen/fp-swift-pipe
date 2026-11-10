@@ -119,7 +119,7 @@ func matchLeavesFailuresAloneAndNeverTestsThem() async {
 
 @Test
 func matchChainsLikeSwitchCases() async {
-    // Successive `Match` stages act as the arms of a switch over the stream.
+    // Several `Match` stages work like the cases of a `switch`.
     let pipe = Pipe<String, AppError> {
         From([Response.ok(200), .unauthorized, .redirect("/home")])
         Match(Response.unauthorized) { .failure(AppError.unauthorized) }

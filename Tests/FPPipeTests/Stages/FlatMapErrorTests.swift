@@ -46,8 +46,7 @@ func flatMapErrorOnSuccessPathPassesThrough() async {
 
 @Test
 func reFailedErrorIsCaughtByLaterRecoveryStage() async {
-    // The first recovery re-fails with a new error type; a second recovery downstream
-    // collapses it — errors keep flowing through the channel between recovery stages.
+    // The first recovery fails again with a new error type, and a later stage recovers it.
     let pipe = Pipe<Int, Never> {
         From([1, 2, 3])
         FlatMap { (n: Int) -> Result<Int, NetError> in

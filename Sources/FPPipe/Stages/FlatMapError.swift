@@ -1,9 +1,6 @@
 import FP
 
-/// Replace each `.failure` with the `Result` produced by the closure. The output
-/// failure type may differ from the input — yield `.success` to recover, `.failure`
-/// to re-fail with a (possibly different) error. Internally delegates to fp-swift's
-/// `Result.orElse`.
+/// The stage that `FlatMapError` returns.
 @usableFromInline
 struct FlatMapErrorStage<
     Value: Sendable,
@@ -39,7 +36,11 @@ struct FlatMapErrorStep<Value, InputFailure: Error, OutputFailure: Error>: PipeS
     }
 }
 
-/// DSL: `FlatMapError { (e: NetError) -> Result<Item, AppError> in … }`.
+/// Replaces each failure with the `Result` that the closure makes from the error. Successes
+/// pass through unchanged.
+///
+/// Return `.success` to recover, or `.failure` to fail again. The new error can have another
+/// type. To handle only some errors, use `MatchError`.
 @inlinable
 public func FlatMapError<
     Value: Sendable,

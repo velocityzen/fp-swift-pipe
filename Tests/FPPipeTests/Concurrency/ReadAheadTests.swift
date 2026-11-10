@@ -2,19 +2,18 @@
 import Synchronization
 import Testing
 
-// The fan-out stages above `bufferSize: 1`: a task of their own expands the elements,
-// at most `bufferSize` ahead of the consumer.
+// Fan-out stages with `bufferSize` above 1 expand elements in their own task, at most
+// `bufferSize` ahead of the reader.
 
 private enum E: Error, Equatable, Sendable { case bad }
 
-/// Counts the inner elements a fan-out has produced.
 private final class Produced: Sendable {
     private let value = Mutex(0)
     func increment() { value.withLock { $0 += 1 } }
     var current: Int { value.withLock { $0 } }
 }
 
-/// `lower..<upper`, counting each element as it is produced.
+/// `lower..<upper` that counts each element it makes.
 private struct CountingInner: Sequence, Sendable {
     let lower: Int
     let upper: Int
@@ -33,8 +32,7 @@ private struct CountingInner: Sequence, Sendable {
     }
 }
 
-/// Async `lower..<upper`, counting each element as it is produced; `pause` sleeps
-/// before each one, which lets a test catch the producer inside the inner sequence.
+/// The async version of `CountingInner`. `pause` sleeps before each element.
 private struct CountingAsyncInner: AsyncSequence, Sendable {
     let lower: Int
     let upper: Int
@@ -61,8 +59,7 @@ private struct CountingAsyncInner: AsyncSequence, Sendable {
     }
 }
 
-/// The elements of `0..<200` that fail on multiples of 7, each success `n` expanded to
-/// `n..<(n + 3)`.
+/// The expected output of the order tests.
 private let expected: [Result<Int, E>] = (0..<200).flatMap { (n: Int) -> [Result<Int, E>] in
     n.isMultiple(of: 7) ? [.failure(.bad)] : (n..<(n + 3)).map { .success($0) }
 }
@@ -71,8 +68,7 @@ private func failingMultiplesOfSeven(_ n: Int) -> Result<Int, E> {
     n.isMultiple(of: 7) ? .failure(.bad) : .success(n)
 }
 
-/// Waits until `produced` stops growing, which it never does while a producer runs on
-/// after the consumer is gone. Returns the count it settled at, or nil if it never did.
+/// Waits until `produced` stops growing and returns it, or nil if it never stops.
 private func settled(_ produced: Produced) async -> Int? {
     var last = produced.current
     for _ in 0..<100 {
@@ -145,7 +141,7 @@ func bufferedFlatMapSequenceIsBoundedBySlowConsumer() async {
     var taken = 0
     for await _ in pipe {
         taken += 1
-        // Give a runaway producer every chance to show itself.
+        // Give a producer that ignores the limit time to run ahead.
         try? await Task.sleep(for: .milliseconds(10))
         #expect(
             produced.current <= taken + 4,
@@ -179,8 +175,8 @@ func bufferedFlatMapAsyncSequenceIsBoundedBySlowConsumer() async {
 
 // MARK: - Cancellation
 
-/// An inner sequence that sleeps before every element, read ahead without a bound, so
-/// the producer is busy inside it — not parked on a slot — when the consumer goes.
+/// No buffer limit and a sleep before each element, so when the reader stops, the producer
+/// is busy in the inner sequence, not waiting for a slot.
 private func endlessFanOut(_ produced: Produced) -> Pipe<Int, Never> {
     Pipe<Int, Never> {
         From([Int.max])
@@ -215,7 +211,7 @@ func droppingTheIteratorStopsTheProducer() async {
     let produced = Produced()
     let pipe = endlessFanOut(produced)
 
-    // No cancellation: releasing the iterator is the only signal the producer gets.
+    // No cancellation. Releasing the iterator is the only signal.
     var taken = 0
     for await _ in pipe {
         taken += 1

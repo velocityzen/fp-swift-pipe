@@ -18,7 +18,7 @@ private struct DiskError: Error {}
 
 private let failures: [AppError] = [.rateLimited, .http(404), .fatal, .http(500), .rateLimited]
 
-/// A pipe that emits `1`, then every error in `failures`.
+/// A pipe that gives `1`, then every error in `failures`.
 private func failing() -> Pipe<Int, AppError> {
     Pipe<Int, AppError> {
         From([nil] + failures.map(Optional.some))

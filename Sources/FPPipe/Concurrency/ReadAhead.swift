@@ -1,14 +1,10 @@
 import FP
 
 extension AsyncSequence where Self: Sendable, Failure == Never, Element: Sendable {
-    /// Iterates the sequence in a task of its own, at most `count` elements ahead of
-    /// the consumer: the fan-out stages above `bufferSize: 1`.
+    /// Reads the sequence in its own task, at most `count` elements ahead of the reader.
     ///
-    /// fp-swift's `compactMapAsyncUnordered` reads its source in a task of its own and
-    /// admits an element only while fewer than `concurrency` wait to be consumed. With
-    /// every element passed through, no transform runs and elements come out in the order
-    /// they were read, so it is a bounded read-ahead buffer. Cancelling the consumer, or
-    /// dropping its iterator, stops the reading task, parked or not.
+    /// It sends every element to the `passthrough` of `compactMapAsyncUnordered`, so the order
+    /// stays the same. It stops when the reader stops.
     @inlinable
     func readAhead(_ count: Int) -> UnorderedMapSequence<Self, Element> {
         compactMapAsyncUnordered(concurrency: count, passthrough: { $0 }, { $0 })

@@ -1,5 +1,4 @@
-/// Observes the successes a pattern matches and passes every element through unchanged.
-/// Failures and non-matching successes are not observed.
+/// The stage behind `TapMatch(pattern) { … }`.
 @usableFromInline
 struct TapMatchStage<Matcher: PipeMatcher>: PipePolyStage where Matcher.Subject: Sendable {
     @usableFromInline typealias Input = Matcher.Subject
@@ -21,8 +20,7 @@ struct TapMatchStage<Matcher: PipeMatcher>: PipePolyStage where Matcher.Subject:
     }
 }
 
-/// `TapMatch(T.self)`: polymorphic in both channels, because a dynamic cast works on any
-/// value type — the pipe's types are whatever the upstream carries.
+/// The stage behind `TapMatch(T.self) { … }`. It fits any pipe.
 @usableFromInline
 struct TapMatchTypeStage<T>: PipeForwardingStage {
     @usableFromInline let action: @Sendable (T) -> Void
@@ -39,8 +37,9 @@ struct TapMatchTypeStage<T>: PipeForwardingStage {
     }
 }
 
-/// DSL: `TapMatch(Event.logout) { session.clear() }` — runs for each success equal to
-/// `value`.
+/// Runs `action` for each success that equals `value`.
+///
+/// Every element passes through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func TapMatch<Value: Equatable & Sendable>(
     _ value: Value,
@@ -49,8 +48,10 @@ public func TapMatch<Value: Equatable & Sendable>(
     TapMatchStage(EqualMatcher(value), action)
 }
 
-/// DSL: `TapMatch(Dog.self) { dog in print(dog.name) }` — runs for each success that is a
-/// `T`, with the downcast value. Fits any pipe; the cast decides what matches.
+/// Runs `action` for each success that is a `T`.
+///
+/// `action` gets the value cast to `T`. Every element passes through unchanged.
+/// See <doc:PatternMatching>.
 @inlinable
 public func TapMatch<T>(
     _ type: T.Type,
@@ -59,8 +60,9 @@ public func TapMatch<T>(
     TapMatchTypeStage(action)
 }
 
-/// DSL: `TapMatch(where: { (n: Int) in n > 100 }, then: { n in log(n) })` — runs for each
-/// success the predicate accepts.
+/// Runs `action` for each success for which `predicate` returns `true`.
+///
+/// Every element passes through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func TapMatch<Value: Sendable>(
     where predicate: @escaping @Sendable (Value) -> Bool,
@@ -69,9 +71,9 @@ public func TapMatch<Value: Sendable>(
     TapMatchStage(PredicateMatcher(predicate), action)
 }
 
-/// DSL: `TapMatch(extract: \Event.loggedInUser) { user in audit(user) }` — runs for each
-/// success the extractor returns a payload for (typically one enum case's associated
-/// value), with that payload.
+/// Runs `action` for each success for which `extract` returns a payload.
+///
+/// `action` gets the payload. Every element passes through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func TapMatch<Value: Sendable, Payload>(
     extract: @escaping @Sendable (Value) -> Payload?,

@@ -1,8 +1,6 @@
 import FP
 
-/// Replace each `.failure` with an alternative `Result` that doesn't see the error.
-/// The leftmost success wins; if both are failures, the alternative's failure is
-/// propagated. Mirrors fp-swift's `Result.alt`.
+/// The stage that `Alt` returns.
 @usableFromInline
 struct AltStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
     @usableFromInline typealias InputFailure = F
@@ -37,7 +35,13 @@ struct AltStep<Value, F: Error>: PipeStep {
     }
 }
 
-/// DSL: `Alt { Result<Item, AppError>.success(.placeholder) }`.
+/// Replaces each failure with the `Result` that the closure returns.
+///
+/// The closure does not see the error. Successes pass through unchanged.
+///
+/// ```swift
+/// Alt { Result<Int, ParseError>.success(0) }
+/// ```
 @inlinable
 public func Alt<Value: Sendable, F: Error & Sendable>(
     _ alternative: @escaping @Sendable () -> Result<Value, F>,

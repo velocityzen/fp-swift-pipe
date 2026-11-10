@@ -52,13 +52,13 @@ let lines = Pipe<String, Never> {
 }
 ```
 
-`AsyncFlatMap`, `AsyncTapError`, `AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse` and `AsyncMatch` do the same with an `async` closure, for example to read a value from a cache.
+`AsyncFlatMap`, `AsyncTapError`, `AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse` and `AsyncMatch` do the same with an `async` closure.
 
-To handle only some errors, use `MatchError` (see <doc:PatternMatching>). It is shorter than a `FlatMapError` that has to return `.failure(error)` for all other errors.
+To handle only some errors, use `MatchError` (see <doc:PatternMatching>).
 
 ## Calling throwing code
 
-Stages do not throw. Every error is a value in the failure channel, so the compiler always knows the failure type. To call a function that throws, turn its result into a `Result` inside the closure:
+Stages do not throw, so the compiler always knows the failure type. To call a function that throws, turn its result into a `Result` inside the closure:
 
 - For sync code, use `Result { try … }` from the standard library, in `FlatMap`.
 - For async code, use `Result.fromAsync { try await … }` from fp-swift, in `AsyncFlatMap`.

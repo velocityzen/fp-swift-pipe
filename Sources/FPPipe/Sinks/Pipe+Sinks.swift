@@ -1,25 +1,14 @@
 // MARK: - Sinks
 //
-// Terminal operations that drive a `Pipe` to completion (or to a stopping condition) and
-// return a final result. Sinks are the only place a pipeline actually executes: building
-// stages just describes the chain, iterating runs it. Pick a sink based on what you want
-// to do with the elements:
+// Building a pipe does no work. It runs only when a sink or `for await` reads it.
 //
-// - `toResult()`     — collect all successes; stop on first failure (all-or-nothing).
-// - `toArray()`      — collect every element including failures (no short-circuit).
-// - `reduce(_:_:)`   — fold to a single value; stop on first failure.
-// - `first()`        — the first element (success or failure).
-// - `firstSuccess()` — the first success (skipping leading failures).
-// - `firstError()`   — the first failure (skipping leading successes).
-//
-// For custom termination logic use `for await x in pipe { … }` directly and `break` when
-// you're done — the iterator deinit propagates cancellation upstream.
+// To stop at your own condition, use `for await` and `break`. When the loop ends, its
+// iterator is released, and that stops the earlier stages.
 
 public extension Pipe {
-    /// Collect every success into an array, all-or-nothing.
-    /// On the first `.failure`, iteration stops and that failure is returned.
-    /// `@discardableResult` so this also serves as a "drive to completion" terminal
-    /// when the values aren't needed.
+    /// Returns all values, or the first failure.
+    ///
+    /// It stops reading at the first failure. To only run the pipe, ignore the result.
     @inlinable
     @discardableResult
     func toResult() async -> Result<[Success], Failure> {
@@ -35,7 +24,9 @@ public extension Pipe {
         return .success(values)
     }
 
-    /// Iterate the pipeline to completion and return every element. Never stops on failure.
+    /// Returns every element, values and failures.
+    ///
+    /// It reads to the end.
     @inlinable
     func toArray() async -> [Result<Success, Failure>] {
         var elements: [Result<Success, Failure>] = []
@@ -45,8 +36,9 @@ public extension Pipe {
         return elements
     }
 
-    /// Return the first element produced by the pipeline (success or failure), or
-    /// `nil` if the pipeline is empty.
+    /// Returns the first element, or `nil` if the pipe is empty.
+    ///
+    /// It stops reading after the first element.
     @inlinable
     func first() async -> Result<Success, Failure>? {
         for await element in self {
@@ -55,8 +47,9 @@ public extension Pipe {
         return nil
     }
 
-    /// Return the first successful value, skipping any leading failures.
-    /// `nil` if the pipeline never emits a success.
+    /// Returns the first value, or `nil` if there is none.
+    ///
+    /// It stops reading at the first success.
     @inlinable
     func firstSuccess() async -> Success? {
         for await element in self {
@@ -65,8 +58,9 @@ public extension Pipe {
         return nil
     }
 
-    /// Return the first error, skipping any leading successes.
-    /// `nil` if the pipeline never emits a failure.
+    /// Returns the first error, or `nil` if there is none.
+    ///
+    /// It stops reading at the first failure.
     @inlinable
     func firstError() async -> Failure? {
         for await element in self {
@@ -75,8 +69,9 @@ public extension Pipe {
         return nil
     }
 
-    /// Reduce the success channel into a single value, all-or-nothing.
-    /// The first `.failure` short-circuits.
+    /// Combines all values into one value, or returns the first failure.
+    ///
+    /// It starts with `initial` and stops reading at the first failure.
     @inlinable
     func reduce<U: Sendable>(
         _ initial: U,

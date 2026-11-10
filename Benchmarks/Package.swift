@@ -2,13 +2,13 @@
 
 import PackageDescription
 
-// Same isolation semantics as the FPPipe target.
+// Same isolation settings as the FPPipe target.
 let swiftSettings: [SwiftSetting] = [
     .enableUpcomingFeature("NonisolatedNonsendingByDefault")
 ]
 
-// A separate package so the library itself never depends on
-// the benchmark package: run `swift package benchmark` from this directory.
+// A separate package, so the library does not depend on it. Run `swift package benchmark`
+// from this folder.
 let package = Package(
     name: "fp-swift-pipe-benchmarks",
     platforms: [.macOS(.v26)],
@@ -30,8 +30,7 @@ let package = Package(
     ]
 )
 
-// Each suite is its own executable under Benchmarks/, which is where the
-// benchmark plugin discovers them.
+// Each suite is an executable in Benchmarks/, where the plugin finds it.
 for suite in ["StageBenchmarks", "AsyncStageBenchmarks", "PipeBenchmarks"] {
     package.targets.append(
         .executableTarget(

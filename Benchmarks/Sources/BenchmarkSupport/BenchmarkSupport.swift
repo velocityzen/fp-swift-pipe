@@ -1,8 +1,6 @@
 import Benchmark
 
-/// Metrics recorded by every FPPipe benchmark: time, instructions, heap
-/// traffic and ARC traffic. Every value is reported per run of the pipeline
-/// under test.
+/// The metrics every benchmark records, per run.
 public let pipeMetrics: [BenchmarkMetric] = [
     .wallClock,
     .cpuTotal,
@@ -16,9 +14,8 @@ public let pipeMetrics: [BenchmarkMetric] = [
     .releaseCount,
 ]
 
-/// The metrics `baseline check` fails on. Allocation and ARC counts barely
-/// move between runs of the same code, while times swing with the machine's
-/// load, so times are reported but never fail a check.
+/// The metrics `baseline check` fails on. Times change with machine load, so they are
+/// not in this list.
 public let checkedMetrics: [BenchmarkMetric] = [
     .mallocCountTotal,
     .objectAllocCount,
@@ -26,20 +23,14 @@ public let checkedMetrics: [BenchmarkMetric] = [
     .releaseCount,
 ]
 
-/// How far, in percent, a benchmark's checked metrics may move between two
-/// baselines before `baseline check` reports them.
+/// How much, in percent, checked metrics may change before `baseline check` fails.
 public enum CountTolerance: Sendable {
-    /// 5%, for a run that does the same work every time. Its counts barely
-    /// move between runs of the same code.
+    /// 5%, for a run that does the same work every time.
     case standard
 
-    /// 15%, for a run whose producer task races its consumer, such as a
-    /// flat-map stage with a `bufferSize` above 1. How often the consumer waits
-    /// on an empty buffer depends on scheduling, and each wait retains and may
-    /// allocate. Runs of the same code have moved retains by 7% on CI and
-    /// allocations from 15 to 17 (13%) locally. One more retain or allocation
-    /// per element moves these counts by 30% or more at `n: 1024`, which this
-    /// still reports.
+    /// 15%, for a run where a producer task races the reader, such as a flat-map stage with
+    /// `bufferSize` above 1. Scheduling moves its counts by up to 13%. One extra retain or
+    /// allocation per element moves them by 30% or more, so that is still caught.
     case racing
 
     var percent: Double {
@@ -65,12 +56,8 @@ func pipeThresholds(_ tolerance: CountTolerance) -> [BenchmarkMetric: BenchmarkT
 public extension Benchmark.Configuration {
     /// The configuration every FPPipe benchmark uses.
     ///
-    /// Each sample runs `scaling` runs in a `benchmark.scaledIterations`
-    /// loop, and the scaled metrics are divided back to a single run. Use
-    /// `.kilo` for runs in the micro- or nanosecond range, so timer and
-    /// sampling overhead stays out of the numbers, and `.one` for runs that
-    /// already take a millisecond or so. Pass `tolerance: .racing` for a run
-    /// whose producer task races its consumer.
+    /// Use `scaling: .kilo` for runs under a millisecond, and `.one` for longer ones. Use
+    /// `tolerance: .racing` when a producer task races the reader.
     static func pipe(
         _ tags: [String: String] = [:],
         scaling: BenchmarkScalingFactor = .kilo,
@@ -88,20 +75,18 @@ public extension Benchmark.Configuration {
     }
 }
 
-/// The failure every failing benchmark element carries.
 public struct BenchError: Error, Equatable, Sendable {
     public init() {}
 }
 
-/// A second failure type, for stages that change the failure channel.
+/// For stages that change the failure type.
 public struct OtherError: Error, Equatable, Sendable {
     public init() {}
 }
 
 public typealias IntResult = Result<Int, BenchError>
 
-/// Iterates `sequence` to its end and returns how many elements it produced,
-/// the cheapest way to run a pipeline.
+/// Reads `sequence` to the end and returns the element count.
 @inlinable
 public func drain<S: AsyncSequence>(_ sequence: S) async -> Int where S.Failure == Never {
     var count = 0
@@ -111,8 +96,7 @@ public func drain<S: AsyncSequence>(_ sequence: S) async -> Int where S.Failure 
     return count
 }
 
-/// An async sequence of `0..<count` that never suspends or allocates, so a
-/// benchmark measures what consumes it rather than its source.
+/// An async `0..<count` that never suspends or allocates, so only the reader is measured.
 public struct CountingSequence: AsyncSequence, Sendable {
     public typealias Element = Int
     public typealias Failure = Never
@@ -147,8 +131,7 @@ public struct CountingSequence: AsyncSequence, Sendable {
     }
 }
 
-/// An async sequence of `count` results, every third a failure, that never
-/// suspends or allocates: the source for stages that act on failures.
+/// Like `CountingSequence`, but gives results, and every third one is a failure.
 public struct ResultSequence: AsyncSequence, Sendable {
     public typealias Element = IntResult
     public typealias Failure = Never

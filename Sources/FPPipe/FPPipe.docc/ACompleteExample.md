@@ -34,7 +34,7 @@ func fetchArticles(
         From(urls)
 
         // 2. Download up to 4 at a time, and keep the source order.
-        AsyncFlatMapKeepOrder(concurrency: 4) { (url: URL) in
+        AsyncFlatMap(concurrency: 4, ordered: true) { (url: URL) in
             await Result.fromAsync {
                 try await URLSession.shared.data(from: url).0
             }

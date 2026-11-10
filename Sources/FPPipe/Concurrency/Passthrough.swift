@@ -1,19 +1,17 @@
-// The unordered `Async*` stages run at `concurrency > 1` on fp-swift's
-// `compactMapAsyncUnordered`, whose `passthrough` emits an element straight
-// away, without a worker: these are the passthroughs for the channel a stage
-// leaves untouched (e.g. failures through `AsyncMap`).
+// With `concurrency` above 1, the `Async*` stages use fp-swift's ordered or unordered
+// `compactMap` (see `compactMapAsyncIterator`). Its `passthrough` passes an element on at once,
+// with no worker task. These functions are the `passthrough` for the side a stage does not
+// change, for example failures in `AsyncMap`.
 
 extension Result {
-    /// The failure re-typed under a new success type, or `nil` for a success — the
-    /// `passthrough` for stages that only transform successes.
+    /// Returns the failure with a new success type, or `nil` for a success.
     @inlinable
     func passthroughFailure<NewSuccess>() -> Result<NewSuccess, Failure>? {
         guard case .failure(let error) = self else { return nil }
         return .failure(error)
     }
 
-    /// The success re-typed under a new failure type, or `nil` for a failure — the
-    /// `passthrough` for stages that only transform failures.
+    /// Returns the success with a new failure type, or `nil` for a failure.
     @inlinable
     func passthroughSuccess<NewFailure>() -> Result<Success, NewFailure>? {
         guard case .success(let value) = self else { return nil }

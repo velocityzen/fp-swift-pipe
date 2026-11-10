@@ -1,8 +1,6 @@
 import FP
 
-/// Folds each `Result` element into a single `Output` type by handling both success
-/// and failure cases. Output pipeline cannot fail (`Failure == Never`).
-/// Mirrors fp-swift's `Result.match`.
+/// The stage behind `Match(onSuccess:onFailure:)`.
 @usableFromInline
 struct MatchStage<Input: Sendable, Output: Sendable, InputFailure: Error & Sendable>:
     PipeFoldStage
@@ -46,11 +44,16 @@ struct MatchStep<Input, Output, InputFailure: Error>: PipeStep {
     }
 }
 
-/// DSL: `Match(onSuccess: { item in "ok: \(item)" }, onFailure: { e in "err: \(e)" })`.
+/// Turns every element into one type: successes with `onSuccess`, failures with `onFailure`.
 ///
-/// Both sides must be closures — autoclosure-default variants don't work as
-/// builder stages because the factory can't infer `Input` / `InputFailure` from
-/// non-closure arguments alone.
+/// The pipe cannot fail after it. See <doc:HandlingFailures>.
+///
+/// ```swift
+/// Match(
+///     onSuccess: { (item: String) in "ok: \(item)" },
+///     onFailure: { (error: FetchError) in "error: \(error)" }
+/// )
+/// ```
 @inlinable
 public func Match<Input: Sendable, Output: Sendable, InputFailure: Error & Sendable>(
     onSuccess: @escaping @Sendable (Input) -> Output,

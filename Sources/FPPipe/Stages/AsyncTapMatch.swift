@@ -1,5 +1,4 @@
-/// Asynchronously observes the successes a pattern matches and passes every element
-/// through unchanged. Runs sequentially, like `AsyncTap`, to keep side effects in order.
+/// The stage behind `AsyncTapMatch(pattern) { … }`.
 @usableFromInline
 struct AsyncTapMatchStage<Matcher: PipeMatcher>: PipePolyStage where Matcher.Subject: Sendable {
     @usableFromInline typealias Input = Matcher.Subject
@@ -21,7 +20,7 @@ struct AsyncTapMatchStage<Matcher: PipeMatcher>: PipePolyStage where Matcher.Sub
     }
 }
 
-/// `AsyncTapMatch(T.self)`: polymorphic in both channels, like `TapMatch(T.self)`.
+/// The stage behind `AsyncTapMatch(T.self) { … }`.
 @usableFromInline
 struct AsyncTapMatchTypeStage<T>: PipeForwardingStage {
     @usableFromInline let action: @Sendable (T) async -> Void
@@ -39,8 +38,10 @@ struct AsyncTapMatchTypeStage<T>: PipeForwardingStage {
     }
 }
 
-/// DSL: `AsyncTapMatch(Event.logout) { await session.clear() }` — runs for each success
-/// equal to `value`.
+/// Runs `action` for each success that equals `value`.
+///
+/// It handles one element at a time. Every element passes through unchanged.
+/// See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatch<Value: Equatable & Sendable>(
     _ value: Value,
@@ -49,8 +50,10 @@ public func AsyncTapMatch<Value: Equatable & Sendable>(
     AsyncTapMatchStage(EqualMatcher(value), action)
 }
 
-/// DSL: `AsyncTapMatch(Dog.self) { dog in await kennel.checkIn(dog) }` — runs for each
-/// success that is a `T`, with the downcast value. Fits any pipe.
+/// Runs `action` for each success that is a `T`.
+///
+/// `action` gets the value cast to `T`. It handles one element at a time. Every element passes
+/// through unchanged. See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatch<T>(
     _ type: T.Type,
@@ -59,8 +62,10 @@ public func AsyncTapMatch<T>(
     AsyncTapMatchTypeStage(action)
 }
 
-/// DSL: `AsyncTapMatch(where: { (o: Order) in o.isLarge }, then: { o in await review(o) })`
-/// — runs for each success the predicate accepts.
+/// Runs `action` for each success for which `predicate` returns `true`.
+///
+/// It handles one element at a time. Every element passes through unchanged.
+/// See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatch<Value: Sendable>(
     where predicate: @escaping @Sendable (Value) -> Bool,
@@ -69,8 +74,10 @@ public func AsyncTapMatch<Value: Sendable>(
     AsyncTapMatchStage(PredicateMatcher(predicate), action)
 }
 
-/// DSL: `AsyncTapMatch(extract: \Event.loggedInUser) { user in await audit(user) }` — runs
-/// for each success the extractor returns a payload for, with that payload.
+/// Runs `action` for each success for which `extract` returns a payload.
+///
+/// `action` gets the payload. It handles one element at a time. Every element passes through
+/// unchanged. See <doc:PatternMatching>.
 @inlinable
 public func AsyncTapMatch<Value: Sendable, Payload>(
     extract: @escaping @Sendable (Value) -> Payload?,

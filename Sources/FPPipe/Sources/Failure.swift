@@ -1,5 +1,4 @@
-/// A source that emits a single `.failure` and finishes. The success type must
-/// be supplied because no value is ever produced.
+/// A source that gives one failure and then finishes.
 @usableFromInline
 struct FailureSource<V: Sendable, F: Error & Sendable>: PipeSource {
     @usableFromInline typealias Output = V
@@ -19,8 +18,7 @@ struct FailureSource<V: Sendable, F: Error & Sendable>: PipeSource {
     }
 }
 
-/// DSL: `Failure(AppError.bad, valueType: Int.self)` — a one-shot source that always fails.
-/// The value type cannot be inferred (no value is produced) so it must be supplied.
+/// Gives one failure and then finishes.
 @inlinable
 public func Failure<V: Sendable, F: Error & Sendable>(
     _ error: F,

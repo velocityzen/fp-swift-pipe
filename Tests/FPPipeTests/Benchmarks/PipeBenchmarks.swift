@@ -3,20 +3,10 @@ import FP
 import Synchronization
 @testable import FPPipe
 
-// Informational benchmarks. These run as part of the regular test suite and validate
-// behavior at scale. Timings are printed for inspection AND asserted against conservative
-// wall-clock upper bounds (3-5× the observed local time on an M-class Mac) so that real
-// regressions are caught while normal CI variance is tolerated. To skip them during fast
-// iteration, filter with `swift test --skip Benchmark`. If you see a benchmark failing on
-// CI but passing locally, raise the bound — don't remove the assertion.
-//
-// On simulator platforms (iOS/tvOS/watchOS/visionOS CI) the wall-clock bounds are
-// compiled out — simulators can stall ~10s warming up under CI. Timings are still
-// printed and the behavioral checks run everywhere.
-//
-// The suite is `.serialized` so the wall-clock measurements don't contend with each
-// other — swift-testing would otherwise run all four benchmarks in parallel. They still
-// share the run with the rest of the suite, which the bounds above account for.
+// Benchmarks that run with the normal tests and check their time against generous limits.
+// If one fails only on CI, raise its limit. Do not remove the check. Simulators can stall
+// on CI, so time checks run on macOS and Linux only. `.serialized` keeps the benchmarks
+// from slowing each other down.
 
 private enum E: Error, Equatable, Sendable { case bad }
 
@@ -46,15 +36,14 @@ struct PipeBenchmarks {
         print("[bench] long-chain 10K → \(collected) elements in \(elapsed)")
         #expect(collected > 0)
         if case .failure = result { Issue.record("expected success") }
-        // Local M-class observation: ~25ms. Bound at 250ms for CI variance (~10×).
+        // About 25ms locally.
         #if os(macOS) || os(Linux)
         #expect(elapsed < .milliseconds(250), "10-stage chain over 10K elements took \(elapsed)")
         #endif
     }
 
     @Test func benchmarkShortCircuitAtScaleSkipsDownstreamWork() async {
-        // 100K-element source that fails on the first element. Downstream Map closure
-        // must not run for the remaining 99,999 — proves short-circuit works at scale.
+        // `toResult()` stops at the first failure, so `Map` never runs.
         let mapHits = Mutex<Int>(0)
         let pipe = Pipe<Int, E> {
             From(0..<100_000)
@@ -76,7 +65,7 @@ struct PipeBenchmarks {
         print("[bench] short-circuit 100K → \(elapsed), Map closure hits = \(hits)")
         #expect(result == .failure(.bad))
         #expect(hits == 0)
-        // Short-circuit on first element should be near-instant. Local: ~1ms. Bound at 100ms.
+        // About 1ms locally.
         #if os(macOS) || os(Linux)
         #expect(
             elapsed < .milliseconds(100),
@@ -85,17 +74,15 @@ struct PipeBenchmarks {
         #endif
     }
 
-    @Test func benchmarkAsyncMapKeepOrderParallelizesLatentWork() async {
-        // 5 elements, each transform takes ~100ms. Sequential would be ~500ms;
-        // parallel keep-order should be bounded by the slowest element (~100ms +
-        // task scheduling overhead). Per-element work is large enough to dominate
-        // scheduler overhead on shared CI runners.
+    @Test func benchmarkAsyncMapOrderedParallelizesLatentWork() async {
+        // One at a time takes about 500ms. In parallel, it takes about one sleep (100ms). The
+        // sleep is long, so task start-up time on CI does not matter.
         let count = 5
         let perElementSleepNs: UInt64 = 100_000_000  // 100ms
 
         let pipe = Pipe<Int, Never> {
             From(0..<count)
-            AsyncMapKeepOrder(concurrency: count) { (n: Int) async -> Int in
+            AsyncMap(concurrency: count, ordered: true) { (n: Int) async -> Int in
                 try? await Task.sleep(nanoseconds: perElementSleepNs)
                 return n
             }
@@ -107,7 +94,7 @@ struct PipeBenchmarks {
         let elapsed = start.duration(to: clock.now)
 
         let values = result.getOrElse([])
-        print("[bench] keep-order 5×100ms → \(elapsed) (sequential would be ~\(count * 100)ms)")
+        print("[bench] ordered 5×100ms → \(elapsed) (sequential would be ~\(count * 100)ms)")
         #expect(values == Array(0..<count))
 
         #if os(macOS) || os(Linux)
@@ -117,7 +104,7 @@ struct PipeBenchmarks {
             + UInt64(elapsed.components.attoseconds / 1_000_000_000)
         #expect(
             observedNs < sequentialBoundNs / 2,
-            "expected parallel keep-order to be at least 2× faster than sequential"
+            "expected parallel ordered to be at least 2× faster than sequential"
         )
         #endif
     }
@@ -146,13 +133,10 @@ struct PipeBenchmarks {
 
         print("[bench] re-iter 50× over 1K → avg \(avg), median \(median), min \(min), max \(max)")
 
-        // Re-iteration should be O(1) per pass — the typical pass should stay close to
-        // the fastest. The median is asserted rather than the max because a shared CI
-        // runner can preempt a single iteration for 100ms+ (observed 119× min), which
-        // says nothing about re-iteration cost; systematic growth still moves the median.
+        // Check the median, not the max: CI can pause a single run for 100ms or more.
         #if os(macOS) || os(Linux)
         #expect(median < min * 50, "re-iteration cost should be roughly constant")
-        // Total budget for 50 iterations of a 1K-element 4-stage pipe. Local: ~50ms. Bound at 1s.
+        // About 50ms locally.
         #expect(total < .seconds(1), "50× re-iteration over 1K took \(total)")
         #endif
     }

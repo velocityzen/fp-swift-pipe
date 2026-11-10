@@ -1,14 +1,7 @@
 // MARK: - Source backing type
 
-/// Defers a source behind an `async` constructor. On each iteration, `make` is awaited on
-/// the first `next()` to produce an inner sequence, which is then read one element per
-/// pull via the closure `makeNext` builds. The differing source shapes (async/sync
-/// iteration × bare/Result element) all collapse into this single struct — the variation
-/// lives entirely in `makeNext`.
-///
-/// Nothing is read ahead of the consumer: there is no producer task and no buffer, so a
-/// huge inner sequence never lands in memory at once and `make` runs in the consumer's
-/// task, on its isolation.
+/// The source behind every `FromAsync` form. It awaits `make` when the first element is
+/// needed, and it never reads ahead of the reader.
 @usableFromInline
 struct AsyncDeferredSource<Inner: Sendable, Output: Sendable, Failure: Error & Sendable>:
     PipeSource
@@ -33,7 +26,7 @@ struct AsyncDeferredSource<Inner: Sendable, Output: Sendable, Failure: Error & S
     }
 }
 
-/// The lazily-started iterator behind `AsyncDeferredSource`.
+/// The iterator of `AsyncDeferredSource`. It calls `make` on the first `next()`.
 @usableFromInline
 struct DeferredIterator<Inner: Sendable, Element: Sendable>: AsyncIteratorProtocol {
     @usableFromInline
@@ -78,9 +71,10 @@ struct DeferredIterator<Inner: Sendable, Element: Sendable>: AsyncIteratorProtoc
 
 // MARK: - DSL factories
 
-/// Lift an async-produced `AsyncSequence` into a pipeline source. Each iteration
-/// awaits `make` afresh — useful for sources that need async setup (cursors,
-/// authenticated streams, network-bound preludes).
+/// Gives each element of an `AsyncSequence` that an async closure creates, as a success.
+///
+/// The closure runs on every run of the pipe, when the first element is needed. Use it for
+/// async setup, for example to open a database cursor.
 @inlinable
 public func FromAsync<S: AsyncSequence & Sendable>(
     _ make: @escaping @Sendable () async -> S,
@@ -95,9 +89,8 @@ where S.Element: Sendable, S.Failure == Never {
     )
 }
 
-/// Lift an async-produced synchronous `Sequence` into a pipeline source. Each
-/// iteration awaits `make` afresh — useful when an async prep step (DB query,
-/// fetch, decode) yields a finite collection to iterate over.
+/// Gives each element of a `Sequence` that an async closure creates, as a success. The
+/// closure runs when the first element is needed.
 @inlinable
 public func FromAsync<S: Sequence & Sendable>(
     _ make: @escaping @Sendable () async -> S,
@@ -112,7 +105,8 @@ where S.Element: Sendable {
     )
 }
 
-/// Lift an async-produced `AsyncSequence` of `Result` elements into a pipeline source.
+/// Gives each element of an `AsyncSequence` of `Result`s that an async closure creates. The
+/// closure runs when the first element is needed.
 @inlinable
 public func FromAsyncResult<S: AsyncSequence & Sendable, V: Sendable, E: Error & Sendable>(
     _ make: @escaping @Sendable () async -> S,
@@ -127,15 +121,14 @@ where S.Element == Result<V, E>, S.Failure == Never {
     )
 }
 
-/// Open-source marker — alias for `From(_:Input.Type)` provided for symmetry with the
-/// closure-form `FromAsync`. Declares an `Input` type to be supplied at call time.
+/// Starts an open pipe whose input has the type `Input`. The same as `From(Input.self)`.
 @inlinable
 public func FromAsync<Input: Sendable>(_: Input.Type) -> OpenSource<Input> {
     OpenSource<Input>()
 }
 
-/// Open-source marker for a Result-bearing input — alias for `FromResult(_:_:)` provided
-/// for symmetry with the closure-form `FromAsyncResult`.
+/// Starts an open pipe whose input is a sequence of `Result<V, E>`. The same as
+/// `FromResult(V.self, E.self)`.
 @inlinable
 public func FromAsyncResult<V: Sendable, E: Error & Sendable>(
     _: V.Type,

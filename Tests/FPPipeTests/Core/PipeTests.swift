@@ -8,7 +8,6 @@ private enum AppError: Error, Equatable { case network }
 
 // MARK: - Re-iterability
 
-/// A pipeline value can be iterated multiple times; each iteration is independent.
 @Test
 func pipelineIsReiterable() async {
     let pipe = Pipe<Int, Never> {
@@ -86,7 +85,6 @@ func bifunctorIdentityOverFailure() async {
 
 // MARK: - Short-circuit invariant
 
-/// On `.failure`, downstream success-side closures must not run.
 @Test
 func failuresShortCircuitSuccessSideClosures() async {
     let mapHits = Mutex<Int>(0)
@@ -106,15 +104,13 @@ func failuresShortCircuitSuccessSideClosures() async {
         observed.append(x)
     }
 
-    // Map's closure ran for the two successes only — never for the failure.
     #expect(mapHits.withLock { $0 } == 2)
     #expect(observed == [.success(1), .failure(.bad), .success(3)])
 }
 
 // MARK: - Error-channel composition
 
-/// A failure introduced mid-pipeline is re-typed by `MapError`, observed by `TapError`,
-/// and selectively recovered by `FlatMapError` — all per element, successes untouched.
+/// Failures go through `MapError`, `TapError` and `FlatMapError`. Successes do not change.
 @Test
 func errorFlowsThroughRetypeObserveRecoverChain() async {
     let observed = Mutex<Int>(0)
@@ -141,7 +137,7 @@ func errorFlowsThroughRetypeObserveRecoverChain() async {
 
 // MARK: - Associativity (composition is associative by construction)
 
-/// `(source → a → b) → c` produces the same elements as `source → a → (b → c)`.
+/// `(source → a → b) → c` gives the same elements as `source → a → (b → c)`.
 @Test
 func compositionIsAssociative() async {
     let left = Pipe<Int, Never> {

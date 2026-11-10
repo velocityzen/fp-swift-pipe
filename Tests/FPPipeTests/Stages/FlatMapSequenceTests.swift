@@ -4,15 +4,14 @@ import Testing
 
 private enum E: Error, Equatable { case bad }
 
-/// Counts how many inner elements the transform actually vends — lets tests assert
-/// that expansion is bounded by backpressure rather than running to completion.
+/// Counts the inner elements the closure makes, to check that backpressure stops it.
 private final class Counter: Sendable {
     private let value = Mutex<Int>(0)
     func increment() { value.withLock { $0 += 1 } }
     var current: Int { value.withLock { $0 } }
 }
 
-/// `0..<upper` that counts each element as it is produced.
+/// `0..<upper` that counts each element it makes.
 private struct CountingRange: Sequence, Sendable {
     let upper: Int
     let counter: Counter
@@ -62,15 +61,13 @@ func flatMapSequenceForwardsUpstreamFailures() async {
     for await x in pipe {
         seen.append(x)
     }
-    // The failure passes through in source position; the transform never sees it.
+    // The failure keeps its place. The closure never sees it.
     #expect(seen == [.success(0), .success(1), .failure(.bad), .success(0), .success(1)])
 }
 
 @Test
 func flatMapSequenceLargeInnerExpansionStopsOnEarlyBreak() async {
-    // One element fans out into 1M inner elements; the consumer takes 5 and stops.
-    // Backpressure parks the producer once the buffer fills, and stream teardown
-    // unblocks and cancels it — the sink returns with just the prefix.
+    // The reader takes 5 of 1M inner elements. Closing the stream must stop the producer.
     let pipe = Pipe<Int, Never> {
         From([1_000_000])
         FlatMapSequence { (n: Int) in 0..<n }
@@ -91,15 +88,12 @@ func flatMapSequenceExpansionIsBoundedByBufferSize() async {
 
     let result = await pipe.toResult()
     #expect(result == .success([0, 1, 2, 3, 4]))
-    // Invariant, not a race: the producer waits for a free slot before it expands the
-    // next element, so it never runs more than `bufferSize` ahead of the 5 consumed
-    // elements. The remaining ~987 elements are provably never produced.
+    // Not a race: the producer waits for a free slot, so it is at most `bufferSize` ahead.
     #expect(counter.current <= 5 + 8)
 }
 
 @Test
 func flatMapSequenceWithBufferSizeOneDeliversEverythingInOrder() async {
-    // Lockstep expansion of a large inner sequence: every element arrives, in order.
     let pipe = Pipe<Int, Never> {
         From([10_000])
         FlatMapSequence(bufferSize: 1) { (n: Int) in 0..<n }

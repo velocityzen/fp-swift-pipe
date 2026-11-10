@@ -1,4 +1,4 @@
-/// Keeps only successes that satisfy the predicate. Failures pass through unchanged.
+/// The stage that `Filter` returns.
 @usableFromInline
 struct FilterStage<Value: Sendable>: PipePolyStage {
     @usableFromInline typealias Input = Value
@@ -36,7 +36,7 @@ struct FilterStep<Value, F: Error>: PipeStep {
     }
 }
 
-/// DSL: `Filter { $0.isInteresting }`.
+/// Keeps the values for which the closure returns `true`. Failures pass through unchanged.
 @inlinable
 public func Filter<Value: Sendable>(
     _ predicate: @escaping @Sendable (Value) -> Bool,

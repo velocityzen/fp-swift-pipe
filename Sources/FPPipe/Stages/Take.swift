@@ -1,8 +1,4 @@
-/// Forwards only the first `count` elements of the pipeline (successes and failures alike).
-///
-/// Counts every element regardless of `Result` kind — matches stdlib `AsyncSequence.prefix(_:)`.
-/// To take the first N successes, compose `Filter { … } → Take(N)`; failures still consume
-/// the budget when intermixed.
+/// The stage that `Take` returns.
 @usableFromInline
 struct TakeStage: PipeForwardingStage {
     @usableFromInline let count: Int
@@ -20,7 +16,7 @@ struct TakeStage: PipeForwardingStage {
     }
 }
 
-/// Yields the first `remaining` elements of `Base`, then finishes without reading more.
+/// Gives the first `remaining` elements of `Base`, and then finishes without reading more.
 @usableFromInline
 struct TakeIterator<Base: AsyncIteratorProtocol>: AsyncIteratorProtocol
 where Base.Failure == Never {
@@ -46,7 +42,9 @@ where Base.Failure == Never {
     }
 }
 
-/// DSL: `Take(10)`.
+/// Keeps the first `count` elements, and then stops reading.
+///
+/// Failures count too, like `prefix(_:)` on an `AsyncSequence`. `count` must be 0 or more.
 @inlinable
 public func Take(_ count: Int) -> some PipeForwardingStage {
     TakeStage(count)

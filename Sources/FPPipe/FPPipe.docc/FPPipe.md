@@ -20,7 +20,8 @@ let pipe = Pipe<Int, Never> {
 let result = await pipe.toResult()  // .success([20, 40, 60])
 ```
 
-`From` gives the numbers 1 to 6. `Filter` keeps the even numbers, and `Map` multiplies each one by 10.
+`Pipe<Int, Never>` gives `Int` values and cannot fail (`Never`). Creating a pipe does no work. It runs each time you read it, here with `toResult()`.
+
 
 <!-- End of quick start. -->
 
@@ -84,11 +85,11 @@ The articles below start with the basics and end with advanced topics. Start wit
 ### Changing Values
 
 - ``Map(_:)``
-- ``AsyncMap(concurrency:_:)``
+- ``AsyncMap(concurrency:ordered:bufferLimit:_:)``
 - ``Filter(_:)``
-- ``AsyncFilter(concurrency:_:)``
+- ``AsyncFilter(concurrency:ordered:bufferLimit:_:)``
 - ``CompactMap(_:)``
-- ``AsyncCompactMap(concurrency:_:)``
+- ``AsyncCompactMap(concurrency:ordered:bufferLimit:_:)``
 - ``Tap(_:)``
 - ``AsyncTap(_:)``
 - ``Take(_:)``
@@ -97,18 +98,18 @@ The articles below start with the basics and end with advanced topics. Start wit
 ### Handling Failures
 
 - ``FlatMap(_:)``
-- ``AsyncFlatMap(concurrency:_:)``
+- ``AsyncFlatMap(concurrency:ordered:bufferLimit:_:)``
 - ``MapError(_:)``
 - ``TapError(_:)``
 - ``AsyncTapError(_:)``
 - ``Alt(_:)``
-- ``AsyncAlt(concurrency:_:)``
+- ``AsyncAlt(concurrency:ordered:bufferLimit:_:)``
 - ``FlatMapError(_:)``
-- ``AsyncFlatMapError(concurrency:_:)``
+- ``AsyncFlatMapError(concurrency:ordered:bufferLimit:_:)``
 - ``GetOrElse(_:)``
-- ``AsyncGetOrElse(concurrency:_:)``
+- ``AsyncGetOrElse(concurrency:ordered:bufferLimit:_:)``
 - ``Match(onSuccess:onFailure:)``
-- ``AsyncMatch(concurrency:onSuccess:onFailure:)``
+- ``AsyncMatch(concurrency:ordered:bufferLimit:onSuccess:onFailure:)``
 
 ### Pattern Matching
 
@@ -118,18 +119,18 @@ A pattern is an `Equatable` value, a type, a condition (`where:`) or a payload (
 - ``Match(_:then:)-(T.Type,_)``
 - ``Match(where:then:)``
 - ``Match(extract:then:)``
-- ``AsyncMatch(_:concurrency:then:)-(Value,_,_)``
-- ``AsyncMatch(_:concurrency:then:)-(T.Type,_,_)``
-- ``AsyncMatch(where:concurrency:then:)``
-- ``AsyncMatch(extract:concurrency:then:)``
+- ``AsyncMatch(_:concurrency:ordered:bufferLimit:then:)-(Value,_,_,_,_)``
+- ``AsyncMatch(_:concurrency:ordered:bufferLimit:then:)-(T.Type,_,_,_,_)``
+- ``AsyncMatch(where:concurrency:ordered:bufferLimit:then:)``
+- ``AsyncMatch(extract:concurrency:ordered:bufferLimit:then:)``
 - ``MatchError(_:then:)-(F,_)``
 - ``MatchError(_:then:)-(E.Type,_)``
 - ``MatchError(where:then:)``
 - ``MatchError(extract:then:)``
-- ``AsyncMatchError(_:concurrency:then:)-(F,_,_)``
-- ``AsyncMatchError(_:concurrency:then:)-(E.Type,_,_)``
-- ``AsyncMatchError(where:concurrency:then:)``
-- ``AsyncMatchError(extract:concurrency:then:)``
+- ``AsyncMatchError(_:concurrency:ordered:bufferLimit:then:)-(F,_,_,_,_)``
+- ``AsyncMatchError(_:concurrency:ordered:bufferLimit:then:)-(E.Type,_,_,_,_)``
+- ``AsyncMatchError(where:concurrency:ordered:bufferLimit:then:)``
+- ``AsyncMatchError(extract:concurrency:ordered:bufferLimit:then:)``
 - ``TapMatch(_:then:)->PipePolyStage<Value,Value>``
 - ``TapMatch(_:then:)->PipeForwardingStage``
 - ``TapMatch(where:then:)``
@@ -146,11 +147,6 @@ A pattern is an `Equatable` value, a type, a condition (`where:`) or a payload (
 - ``AsyncTapMatchError(_:then:)->PipeForwardingStage``
 - ``AsyncTapMatchError(where:then:)``
 - ``AsyncTapMatchError(extract:then:)``
-
-### Keeping the Source Order
-
-- ``AsyncMapKeepOrder(concurrency:_:)``
-- ``AsyncFlatMapKeepOrder(concurrency:_:)``
 
 ### Turning One Element into Many
 
@@ -176,3 +172,8 @@ A pattern is an `Equatable` value, a type, a condition (`where:`) or a payload (
 - ``PipeForwardingStage``
 - ``PipeFlatErrorStage``
 - ``PipeFoldStage``
+
+### Deprecated
+
+- ``AsyncMapKeepOrder(concurrency:_:)``
+- ``AsyncFlatMapKeepOrder(concurrency:_:)``

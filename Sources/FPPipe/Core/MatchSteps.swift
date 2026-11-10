@@ -1,8 +1,7 @@
-// The steps behind the `Match`-family stages. Each runs on whole `Result` elements
-// through a matcher lifted onto one channel (`SuccessMatcher` / `FailureMatcher`), so
-// the same step serves the success-side and the failure-side stages.
+// The steps behind the pattern-matching stages. A step checks whole `Result` elements with
+// `SuccessMatcher` or `FailureMatcher`, so one step works for both channels.
 
-/// Replaces each element the matcher matches with the element its handler returns.
+/// Replaces each element that matches with the result of the handler.
 @usableFromInline
 struct MatchElementStep<Matcher: PipeMatcher>: PipeStep {
     @usableFromInline let matcher: Matcher
@@ -21,7 +20,7 @@ struct MatchElementStep<Matcher: PipeMatcher>: PipeStep {
     }
 }
 
-/// Runs the action for each element the matcher matches; every element passes through.
+/// Runs the action for each element that matches. Every element passes through.
 @usableFromInline
 struct TapElementStep<Matcher: PipeMatcher>: PipeStep {
     @usableFromInline let matcher: Matcher
@@ -42,7 +41,7 @@ struct TapElementStep<Matcher: PipeMatcher>: PipeStep {
     }
 }
 
-/// `MatchElementStep` with an asynchronous handler.
+/// `MatchElementStep` with an async handler.
 @usableFromInline
 struct AsyncMatchElementStep<Matcher: PipeMatcher>: AsyncPipeStep {
     @usableFromInline let matcher: Matcher
@@ -63,8 +62,7 @@ struct AsyncMatchElementStep<Matcher: PipeMatcher>: AsyncPipeStep {
         return await handler(payload)
     }
 
-    /// The element a sorted element ends up as: the handler's result for a match, the
-    /// element itself otherwise.
+    /// The result of the handler for a match, or the element itself.
     @inlinable
     func resolve(_ sorted: Matched<Matcher.Payload, Matcher.Subject>) async -> Matcher.Subject {
         switch sorted {
@@ -74,7 +72,7 @@ struct AsyncMatchElementStep<Matcher: PipeMatcher>: AsyncPipeStep {
     }
 }
 
-/// `TapElementStep` with an asynchronous action.
+/// `TapElementStep` with an async action.
 @usableFromInline
 struct AsyncTapElementStep<Matcher: PipeMatcher>: AsyncPipeStep {
     @usableFromInline let matcher: Matcher

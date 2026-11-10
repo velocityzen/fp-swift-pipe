@@ -85,8 +85,7 @@ func asyncMatchConcurrentRunsHandlersInParallel() async {
 
 @Test
 func asyncMatchConcurrentTestsEachElementOnceAndPassesTheRestThrough() async {
-    // With concurrency > 1 the stage sorts elements on the reading side, so the predicate
-    // runs exactly once per success — never again on the worker — and failures skip it.
+    // The check runs once per success, before the task starts. Failures skip it.
     let tested = Mutex<[Int]>([])
     let pipe = Pipe<Int, AppError> {
         From(1...6)

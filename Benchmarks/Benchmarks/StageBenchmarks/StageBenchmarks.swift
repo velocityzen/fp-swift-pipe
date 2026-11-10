@@ -2,10 +2,7 @@ import Benchmark
 import BenchmarkSupport
 import FPPipe
 
-// The synchronous stages. Each pipeline reads `0..<n`, or ready-made results
-// (every third a failure) for the stages that act on failures, and is run to
-// its end, so the numbers are the pipeline's own cost per run. "(baseline)"
-// entries do the same job by hand.
+// The sync stages, each run to the end. "(baseline)" entries do the same job by hand.
 
 let benchmarks: @Sendable () -> Void = {
     for n in [16, 1024] {
@@ -268,7 +265,7 @@ let benchmarks: @Sendable () -> Void = {
             }
         }
 
-        // The type form matches by dynamic cast.
+        // The type form checks the type at run time.
         let tapMatchErrorType = Pipe<Int, BenchError> {
             FromResult(results)
             TapMatchError(BenchError.self) { error in blackHole(error) }

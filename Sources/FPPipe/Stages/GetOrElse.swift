@@ -1,7 +1,6 @@
 import FP
 
-/// Replace each `.failure` with a `Success` derived from the error. The output
-/// pipeline cannot fail (`Failure == Never`). Mirrors fp-swift's `Result.getOrElse`.
+/// The stage that `GetOrElse` returns.
 @usableFromInline
 struct GetOrElseStage<Value: Sendable, F: Error & Sendable>: PipeFlatErrorStage {
     @usableFromInline typealias InputFailure = F
@@ -36,7 +35,9 @@ struct GetOrElseStep<Value, F: Error>: PipeStep {
     }
 }
 
-/// DSL: `GetOrElse { (e: AppError) in fallbackItem }`.
+/// Replaces each failure with a value that the closure makes from the error.
+///
+/// After this stage, the pipe cannot fail.
 @inlinable
 public func GetOrElse<Value: Sendable, F: Error & Sendable>(
     _ onFailure: @escaping @Sendable (F) -> Value,

@@ -4,9 +4,7 @@ import Testing
 private enum TestError: Error, Equatable { case bad }
 private enum WrappedError: Error, Equatable { case wrapped }
 
-/// The builder threads types through heterogeneous stages: source → Map (Int→Int) →
-/// FlatMap (Int→Result<String, F>). Verifies that `buildPartialBlock` overload
-/// resolution + `Never`-widening compose without explicit annotations.
+/// Types flow through `Map` and `FlatMap` with no extra type annotations.
 @Test
 func builderComposesHeterogeneousStages() async {
     let pipe = Pipe<String, TestError> {
@@ -19,8 +17,7 @@ func builderComposesHeterogeneousStages() async {
     #expect(result == .success(["v=2", "v=3", "v=4"]))
 }
 
-/// With the failure channel already bound (non-`Never`), a second failure-fixed stage
-/// resolves to the matching combine overload instead of the `Never`-widening one.
+/// A second stage with the same fixed failure type uses the plain combine overload.
 @Test
 func builderChainsFailureFixedStagesOnBoundChannel() async {
     let pipe = Pipe<Int, TestError> {
@@ -35,8 +32,7 @@ func builderChainsFailureFixedStagesOnBoundChannel() async {
     #expect(result == .failure(.bad))
 }
 
-/// `MapError` straight after a non-failing source rebinds the failure channel from
-/// `Never` so failure-fixed stages can follow; the transform itself can never run.
+/// `MapError` after a source that cannot fail sets the failure type. Its closure never runs.
 @Test
 func builderWidensNeverFailureIntoPolyValueStage() async {
     let pipe = Pipe<Int, TestError> {
@@ -49,8 +45,7 @@ func builderWidensNeverFailureIntoPolyValueStage() async {
     #expect(result == .success([2, 3, 4]))
 }
 
-/// Open-pipe mirror of the bound-channel combine: an accumulated `OpenPipe` with
-/// failure `F` followed by a stage fixed to the same `F`.
+/// The `OpenPipe` version of `builderChainsFailureFixedStagesOnBoundChannel`.
 @Test
 func openPipeChainsFailureFixedStagesOnBoundChannel() async {
     let pipe = OpenPipe {
@@ -65,7 +60,7 @@ func openPipeChainsFailureFixedStagesOnBoundChannel() async {
     #expect(result == .failure(.bad))
 }
 
-/// Open-pipe mirror of the value-polymorphic failure transform on a bound channel.
+/// In an `OpenPipe`, `MapError` changes a failure type that is already set.
 @Test
 func openPipeTransformsBoundFailureChannel() async {
     let pipe = OpenPipe {
@@ -80,7 +75,7 @@ func openPipeTransformsBoundFailureChannel() async {
     #expect(result == .failure(.wrapped))
 }
 
-/// Open-pipe mirror of the `Never`-widening overload for value-polymorphic stages.
+/// The `OpenPipe` version of `builderWidensNeverFailureIntoPolyValueStage`.
 @Test
 func openPipeWidensNeverFailureIntoPolyValueStage() async {
     let pipe = OpenPipe {
