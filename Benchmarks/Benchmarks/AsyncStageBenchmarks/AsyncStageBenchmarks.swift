@@ -61,12 +61,17 @@ let benchmarks: @Sendable () -> Void = {
 
         for concurrency in [1, 8] {
             let tags = ["n": "\(n)", "concurrency": "\(concurrency)"]
+            let tolerance: CountTolerance =
+                concurrency > 1 ? .racing(workers: concurrency, elements: n) : .standard
 
             let asyncMap = Pipe<Int, Never> {
                 From(0..<n)
                 AsyncMap(concurrency: concurrency) { (value: Int) async in value &* 2 }
             }
-            Benchmark("AsyncMap", configuration: .pipe(tags, scaling: scaling)) { benchmark in
+            Benchmark(
+                "AsyncMap",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(asyncMap))
                 }
@@ -78,8 +83,10 @@ let benchmarks: @Sendable () -> Void = {
                     value &* 2
                 }
             }
-            Benchmark("AsyncMap ordered", configuration: .pipe(tags, scaling: scaling)) {
-                benchmark in
+            Benchmark(
+                "AsyncMap ordered",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(asyncMapOrdered))
                 }
@@ -94,7 +101,11 @@ let benchmarks: @Sendable () -> Void = {
             }
             Benchmark(
                 "AsyncMap ordered",
-                configuration: .pipe(tags.merging(["bufferLimit": "4"]) { $1 }, scaling: scaling)
+                configuration: .pipe(
+                    tags.merging(["bufferLimit": "4"]) { $1 },
+                    scaling: scaling,
+                    tolerance: tolerance
+                )
             ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(asyncMapOrderedLimited))
@@ -107,8 +118,10 @@ let benchmarks: @Sendable () -> Void = {
                     value.isMultiple(of: 2)
                 }
             }
-            Benchmark("AsyncFilter", configuration: .pipe(tags, scaling: scaling)) {
-                benchmark in
+            Benchmark(
+                "AsyncFilter",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(asyncFilter))
                 }
@@ -120,8 +133,10 @@ let benchmarks: @Sendable () -> Void = {
                     .success(value &* 2)
                 }
             }
-            Benchmark("AsyncFlatMap", configuration: .pipe(tags, scaling: scaling)) {
-                benchmark in
+            Benchmark(
+                "AsyncFlatMap",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(asyncFlatMap))
                 }
@@ -135,8 +150,10 @@ let benchmarks: @Sendable () -> Void = {
                     then: { value async -> IntResult in .success(value &* 2) }
                 )
             }
-            Benchmark("AsyncMatch (pattern)", configuration: .pipe(tags, scaling: scaling)) {
-                benchmark in
+            Benchmark(
+                "AsyncMatch (pattern)",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(asyncMatchPattern))
                 }
@@ -148,8 +165,10 @@ let benchmarks: @Sendable () -> Void = {
                     .success(0)
                 }
             }
-            Benchmark("AsyncMatchError", configuration: .pipe(tags, scaling: scaling)) {
-                benchmark in
+            Benchmark(
+                "AsyncMatchError",
+                configuration: .pipe(tags, scaling: scaling, tolerance: tolerance)
+            ) { benchmark in
                 for _ in benchmark.scaledIterations {
                     blackHole(await drain(asyncMatchError))
                 }
@@ -235,7 +254,8 @@ let benchmarks: @Sendable () -> Void = {
 
         for bufferSize in [1, 16] {
             let tags = ["n": "\(n)", "bufferSize": "\(bufferSize)"]
-            let tolerance: CountTolerance = bufferSize > 1 ? .racing : .standard
+            let tolerance: CountTolerance =
+                bufferSize > 1 ? .racing(workers: 0, elements: n) : .standard
 
             let flatMapSequence = Pipe<Int, Never> {
                 From(0..<n)

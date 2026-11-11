@@ -58,7 +58,9 @@ Baselines are saved in `.benchmarkBaselines/`, which is not committed: they are 
 
 Malloc, object-allocation and ARC counts are stable from run to run, so they are the numbers to watch first. Times move with the machine's load; close other work before comparing them.
 
-`baseline check` fails only when one of those four counts gets worse; times and the other metrics are reported by `compare` but never fail a check. A count may move by 5% before it fails. The exception is the flat-map stages with a `bufferSize` above 1, whose producer task races the consumer. How often the consumer waits on an empty buffer depends on scheduling, so the same code has moved their retains by 7% on CI and their allocations from 15 to 17 (13%) locally. They may move by 15%, which still fails one more retain or allocation per element at `n: 1024`. Stages at `concurrency: 8` race too, but their medians stay within 2% from run to run, so they keep 5%. The tolerances are `CountTolerance` in [BenchmarkSupport.swift](Sources/BenchmarkSupport/BenchmarkSupport.swift).
+`baseline check` fails only when one of those four counts gets worse; times and the other metrics are reported by `compare` but never fail a check. A count may move by 5% before it fails. The exceptions are the runs where tasks race the reader on fp-swift's concurrent map: the stages at `concurrency: 8`, and the flat-map stages with a `bufferSize` above 1, whose read-ahead task fills a buffer. A stage starts a worker only when none is idle, so a run starts one to eight of them, two allocations and four mallocs each, and its results buffer grows as far as results pile up. Both depend on scheduling: the same code has moved `AsyncMatchError` from 25 to 27 allocations and the flat-maps from 14 to 16 locally, and the flat-maps' retains by 7% on CI. These runs get an absolute allowance instead, the most their counts can move: seven workers' worth, a growth of the buffer for every doubling up to `n`, and half a retain or release per element. That still fails one more allocation, retain or release per element at `n: 1024`. The tolerances are `CountTolerance` in [BenchmarkSupport.swift](Sources/BenchmarkSupport/BenchmarkSupport.swift).
+
+`baseline check` compares and prints raw samples. A sample at `n: 16` covers 1,000 runs, so its counts and allowances there are 1,000 times a run's.
 
 ```bash
 swift package benchmark baseline check main
@@ -78,7 +80,9 @@ swift package unedit fp-swift
 
 ## Continuous integration
 
-The [Benchmarks workflow](../.github/workflows/benchmarks.yml) benchmarks every push to `main` against the commit it was pushed on top of, and every pull request against its base branch. The job summary lists every metric's change, and the job fails when an allocation or ARC count regresses.
+The [Benchmarks workflow](../.github/workflows/benchmarks.yml) benchmarks every push to `main` against the commit it was pushed on top of, and every pull request against its base branch. The job summary lists every metric's change, and the job fails when an allocation or ARC count regresses; the job log shows every count that crossed its threshold. An improvement passes.
+
+`baseline check base head` builds nothing: it compares two recorded baselines and takes its thresholds from the base one. So a change to the thresholds or the tolerances applies from the commit after it, and the commit that makes it is still checked against the old ones.
 
 ## Finding where allocations come from
 

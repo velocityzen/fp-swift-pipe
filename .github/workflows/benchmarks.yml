@@ -87,14 +87,22 @@ jobs:
 
       # Fails only on the metrics the benchmarks give thresholds to: malloc,
       # object-allocation, retain and release counts. Times on a shared
-      # runner are too noisy to fail on and are only reported above.
+      # runner are too noisy to fail on and are only reported above. The
+      # thresholds come from the base commit's baseline, so a change to them
+      # applies from the commit after it.
       - name: Check for allocation and ARC regressions
         if: steps.commits.outputs.base != ''
         working-directory: Benchmarks
         run: |
           echo "## Allocation and ARC count changes" >> "$GITHUB_STEP_SUMMARY"
-          if swift package benchmark baseline check base head --format markdown --no-progress \
-              >> "$GITHUB_STEP_SUMMARY" 2> "$RUNNER_TEMP/check.err"; then
+          status=0
+          swift package benchmark baseline check base head --format markdown --no-progress \
+              > "$RUNNER_TEMP/check.md" 2> "$RUNNER_TEMP/check.err" || status=$?
+          cat "$RUNNER_TEMP/check.md" >> "$GITHUB_STEP_SUMMARY"
+          # The counts that crossed a threshold go to the log too, so a
+          # failure reads without opening the summary.
+          cat "$RUNNER_TEMP/check.md"
+          if [ "$status" -eq 0 ]; then
             exit 0
           fi
           cat "$RUNNER_TEMP/check.err" >&2

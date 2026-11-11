@@ -23,32 +23,77 @@ public let checkedMetrics: [BenchmarkMetric] = [
     .releaseCount,
 ]
 
-/// How much, in percent, checked metrics may change before `baseline check` fails.
+/// How much checked metrics may change before `baseline check` fails.
 public enum CountTolerance: Sendable {
     /// 5%, for a run that does the same work every time.
     case standard
 
-    /// 15%, for a run where a producer task races the reader, such as a flat-map stage with
-    /// `bufferSize` above 1. Scheduling moves its counts by up to 13%. One extra retain or
-    /// allocation per element moves them by 30% or more, so that is still caught.
-    case racing
+    /// For a run where tasks race the reader, on fp-swift's concurrent map: a stage at
+    /// `concurrency` above 1, which starts up to `workers` worker tasks, or a flat-map stage
+    /// with `bufferSize` above 1, whose read-ahead task starts none. Its counts move with
+    /// scheduling, so each one gets an absolute allowance (see `racingAllowance`).
+    case racing(workers: Int, elements: Int)
+}
 
-    var percent: Double {
-        switch self {
-            case .standard: 5
-            case .racing: 15
-        }
+// A racing run starts a worker for an element only when no worker is idle, so it starts
+// anywhere from one to `min(workers, elements)` of them, and its results wait for the reader
+// in buffers that grow when they fill. How many workers start and how far the buffers grow
+// depend on how the reader and the tasks interleave, and move the run's counts by more than
+// any percentage that would still catch a regression.
+
+/// The checked counts one more worker adds to a run: its task and its closure, and their
+/// retains and releases. Between two runs of the same code, `AsyncMatchError` at
+/// `concurrency: 8` moved from 25 to 27 object allocations and from 43 to 47 mallocs.
+let workerCost: [BenchmarkMetric: Int] = [
+    .objectAllocCount: 2,
+    .mallocCountTotal: 4,
+    .retainCount: 2,
+    .releaseCount: 4,
+]
+
+/// How far the retains and releases of one element may move with the path it takes: to an
+/// idle worker or a new one, its result to a waiting reader or a buffer. Runs of the same
+/// code have moved by a few hundredths per element locally, and the flat-map stages' retains
+/// by 7% on CI, about a fifth per element; one more retain or release per element is 1.
+let elementPathTolerance = 0.5
+
+/// The most a checked count of one racing run can move between runs of the same code.
+///
+/// Besides the workers, the results buffer doubles when it fills. In fp-swift 4.3.0 it
+/// starts empty and keeps its size between uses, so a run allocates it from 0 to
+/// log2(elements) + 1 times.
+func racingAllowance(_ metric: BenchmarkMetric, workers: Int, elements: Int) -> Int {
+    let workerSwing = max(min(workers, elements) - 1, 0) * (workerCost[metric] ?? 0)
+    switch metric {
+        case .objectAllocCount, .mallocCountTotal:
+            let growths = Int.bitWidth - elements.leadingZeroBitCount
+            return workerSwing + growths
+        default:
+            return workerSwing + Int(elementPathTolerance * Double(elements))
     }
 }
 
-func pipeThresholds(_ tolerance: CountTolerance) -> [BenchmarkMetric: BenchmarkThresholds] {
+func pipeThresholds(
+    _ tolerance: CountTolerance,
+    scaling: BenchmarkScalingFactor
+) -> [BenchmarkMetric: BenchmarkThresholds] {
     Dictionary(
         uniqueKeysWithValues: pipeMetrics.map { metric in
-            let thresholds =
-                checkedMetrics.contains(metric)
-                ? BenchmarkThresholds(relative: [.p50: tolerance.percent])
-                : BenchmarkThresholds()
-            return (metric, thresholds)
+            guard checkedMetrics.contains(metric) else {
+                return (metric, BenchmarkThresholds())
+            }
+
+            switch tolerance {
+                case .standard:
+                    return (metric, BenchmarkThresholds(relative: [.p50: 5]))
+                case let .racing(workers, elements):
+                    // Absolute thresholds apply to raw samples, which cover `scaling` runs
+                    // each.
+                    let allowance =
+                        racingAllowance(metric, workers: workers, elements: elements)
+                        * scaling.rawValue
+                    return (metric, BenchmarkThresholds(absolute: [.p50: allowance]))
+            }
         }
     )
 }
@@ -57,7 +102,7 @@ public extension Benchmark.Configuration {
     /// The configuration every FPPipe benchmark uses.
     ///
     /// Use `scaling: .kilo` for runs under a millisecond, and `.one` for longer ones. Use
-    /// `tolerance: .racing` when a producer task races the reader.
+    /// `tolerance: .racing` when tasks race the reader.
     static func pipe(
         _ tags: [String: String] = [:],
         scaling: BenchmarkScalingFactor = .kilo,
@@ -70,7 +115,7 @@ public extension Benchmark.Configuration {
             scalingFactor: scaling,
             maxDuration: .seconds(1),
             maxIterations: 10_000,
-            thresholds: pipeThresholds(tolerance)
+            thresholds: pipeThresholds(tolerance, scaling: scaling)
         )
     }
 }
