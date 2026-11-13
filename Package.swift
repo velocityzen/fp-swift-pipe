@@ -16,9 +16,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        // A local checkout for its concurrent-map deadlock fix, until the
-        // fp-swift release with it. Then go back to the URL, with that
-        // release as the minimum.
+        // 4.4.1 is the first release with the concurrent-map deadlock fix.
         .package(url: "https://github.com/velocityzen/fp-swift", from: "4.4.1"),
         // Property-based tests. Test targets only, so FPPipe's users never
         // fetch it.

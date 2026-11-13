@@ -23,7 +23,11 @@ enum Reach {
     static let cancelledWhileHanging = "the reader was cancelled with a closure hung"
     static let stoppedWhileHanging = "the reader stopped by itself with a closure hung"
     static let hungBehindStages = "a closure hung behind later stages"
+    static let endedBeforeItsWork = "the reader ended while a closure ignored its cancel"
     static let heldBack = "a slow reader held the source back"
+    static let waitedPastConcurrency = "more results waited behind a slow element than concurrency"
+    static let bufferGrew = "a stage's buffer grew past the room it made"
+    static let grewPastPreallocation = "a stage's buffer grew past the preallocation limit"
 }
 
 @Suite("Pipe properties", .hegel)

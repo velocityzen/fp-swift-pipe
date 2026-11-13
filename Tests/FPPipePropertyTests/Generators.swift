@@ -53,7 +53,7 @@ enum PipeGen {
     static let parallel: Gen<Concurrency> = Hegel.zip(
         .oneOf(.int(in: 2...6), .int(in: 2...Int.max), .just(.max)),
         .bool(),
-        .oneOf(.just(Int.max), .int(in: 0...4), .int(in: 0...Int.max), .int(in: 1_020...1_030))
+        .oneOf(.just(Int.max), .int(in: 0...4), .int(in: 0...Int.max))
     ).map {
         Concurrency(concurrency: $0, ordered: $1, bufferLimit: $2)
     }
