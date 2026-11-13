@@ -15,22 +15,58 @@ struct Fail: Error, Hashable, Sendable {
 
 typealias Element = Result<Int, Fail>
 
-/// What the pipe did, in order: each source read and each side effect.
+/// What the pipe did, in order: each source read and each side effect. It
+/// also counts each stage's async closures: how many ran, and how many at
+/// once.
 final class Log: Sendable {
     private let entries = Mutex<[String]>([])
+    /// Per stage index: the closures running now, the most at once, and how
+    /// many ran.
+    private let running = Mutex<[Int: (now: Int, peak: Int, runs: Int)]>([:])
     /// Called with each entry after it is added.
     private let onEntry: @Sendable (String) -> Void
+    /// Called on each entry and as each async closure starts and ends: the
+    /// pipe is making progress.
+    private let onProgress: @Sendable () -> Void
 
-    init(onEntry: @escaping @Sendable (String) -> Void = { _ in }) {
+    init(
+        onEntry: @escaping @Sendable (String) -> Void = { _ in },
+        onProgress: @escaping @Sendable () -> Void = {}
+    ) {
         self.onEntry = onEntry
+        self.onProgress = onProgress
     }
 
     func add(_ entry: String) {
         entries.withLock { $0.append(entry) }
         onEntry(entry)
+        onProgress()
     }
 
     var all: [String] { entries.withLock { $0 } }
+
+    /// How many elements the source gave.
+    var reads: Int { entries.withLock { $0.count(where: { $0.hasPrefix("read ") }) } }
+
+    /// Runs stage `stage`'s async closure body, counted as running for all of
+    /// it.
+    func running<T>(_ stage: Int, _ body: () async -> T) async -> T {
+        running.withLock { counts in
+            let old = counts[stage] ?? (0, 0, 0)
+            counts[stage] = (old.now + 1, max(old.now + 1, old.peak), old.runs + 1)
+        }
+        onProgress()
+        let value = await body()
+        running.withLock { $0[stage]!.now -= 1 }
+        onProgress()
+        return value
+    }
+
+    /// The most of stage `stage`'s closures that ran at once, 0 if none ran.
+    func peak(_ stage: Int) -> Int { running.withLock { $0[stage]?.peak ?? 0 } }
+
+    /// How many of stage `stage`'s closures ran.
+    func runs(_ stage: Int) -> Int { running.withLock { $0[stage]?.runs ?? 0 } }
 }
 
 // MARK: - Stages
@@ -45,6 +81,14 @@ struct Concurrency: Sendable, Hashable, CustomStringConvertible {
 
     var isConcurrent: Bool { concurrency > 1 }
     var isUnordered: Bool { concurrency > 1 && !ordered }
+
+    /// The most closures the docs let run at once: `concurrency`, and with
+    /// `ordered`, `bufferLimit + 1` when that is lower. The tap stages have
+    /// no `concurrency:`, so theirs is `.sequential`: one at a time.
+    var closureLimit: Int {
+        guard ordered, isConcurrent else { return concurrency }
+        return min(concurrency, bufferLimit == .max ? .max : bufferLimit + 1)
+    }
 
     var description: String {
         guard isConcurrent else { return "" }
@@ -102,6 +146,14 @@ enum Op: Sendable, Hashable {
     var isCount: Bool {
         switch self {
             case .take, .drop: true
+            default: false
+        }
+    }
+
+    /// The op can give nothing for an element.
+    var drops: Bool {
+        switch self {
+            case .filter, .compactMap, .take, .drop, .flatMapSequence, .flatMapAsyncSequence: true
             default: false
         }
     }

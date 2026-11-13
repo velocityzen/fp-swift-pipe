@@ -22,7 +22,7 @@ let package = Package(
         .package(url: "https://github.com/velocityzen/fp-swift", from: "4.4.1"),
         // Property-based tests. Test targets only, so FPPipe's users never
         // fetch it.
-        .package(url: "https://github.com/velocityzen/hegel-swift", from: "0.51.1"),
+        .package(url: "https://github.com/velocityzen/hegel-swift", from: "0.51.5"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

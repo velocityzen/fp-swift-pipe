@@ -36,6 +36,16 @@ struct RealStage: Sendable {
     let i: Int
     let log: Log
     let salt: Int
+
+    /// An async closure's body: it waits a little, so concurrent work
+    /// finishes out of order, then gives `tail`. The log counts it as running
+    /// the whole time.
+    func work<T>(_ value: Int, _ tail: () -> T) async -> T {
+        await log.running(i) {
+            await jitter(value, salt)
+            return tail()
+        }
+    }
 }
 
 // MARK: - Values
@@ -68,28 +78,23 @@ extension RealStage {
         switch op {
             case .map(let a):
                 return AsyncMap(concurrency: n, ordered: o, bufferLimit: b) { (v: Int) in
-                    await jitter(v, salt)
-                    return F.map(a, v)
+                    await work(v) { F.map(a, v) }
                 }.attach(upstream)
             case .filter(let m):
                 return AsyncFilter(concurrency: n, ordered: o, bufferLimit: b) { (v: Int) in
-                    await jitter(v, salt)
-                    return F.filter(m, v)
+                    await work(v) { F.filter(m, v) }
                 }.attach(upstream)
             case .compactMap(let m):
                 return AsyncCompactMap(concurrency: n, ordered: o, bufferLimit: b) { (v: Int) in
-                    await jitter(v, salt)
-                    return F.compactMap(m, v)
+                    await work(v) { F.compactMap(m, v) }
                 }.attach(upstream)
             case .flatMap(let m):
                 return AsyncFlatMap(concurrency: n, ordered: o, bufferLimit: b) { (v: Int) in
-                    await jitter(v, salt)
-                    return F.flatMap(m, v)
+                    await work(v) { F.flatMap(m, v) }
                 }.attach(upstream)
             case .tap:
                 return AsyncTap { (v: Int) in
-                    await jitter(v, salt)
-                    log.add("\(i) tap \(v)")
+                    await work(v) { log.add("\(i) tap \(v)") }
                 }.attach(upstream)
             default: preconditionFailure("\(op) has no async version, or is not a value op")
         }
@@ -124,24 +129,20 @@ extension RealStage {
         switch op {
             case .tapError:
                 return AsyncTapError { (f: Fail) in
-                    await jitter(f.code, salt)
-                    log.add("\(i) tapError \(f.code)")
+                    await work(f.code) { log.add("\(i) tapError \(f.code)") }
                 }.attach(upstream)
             case .alt(let x):
                 return AsyncAlt(concurrency: n, ordered: o, bufferLimit: b) {
-                    await jitter(x, salt)
-                    return F.alt(x)
+                    await work(x) { F.alt(x) }
                 }.attach(upstream)
             case .flatMapError(let m):
                 return AsyncFlatMapError(concurrency: n, ordered: o, bufferLimit: b) { (f: Fail) in
-                    await jitter(f.code, salt)
-                    return F.flatMapError(m, f)
+                    await work(f.code) { F.flatMapError(m, f) }
                 }.attach(upstream)
             case .getOrElse(let k):
                 return widened(
                     AsyncGetOrElse(concurrency: n, ordered: o, bufferLimit: b) { (f: Fail) in
-                        await jitter(f.code, salt)
-                        return F.recover(k, f)
+                        await work(f.code) { F.recover(k, f) }
                     }.attach(upstream)
                 )
             case .fold:
@@ -151,12 +152,10 @@ extension RealStage {
                         ordered: o,
                         bufferLimit: b,
                         onSuccess: { (v: Int) in
-                            await jitter(v, salt)
-                            return F.foldSuccess(v)
+                            await work(v) { F.foldSuccess(v) }
                         },
                         onFailure: { (f: Fail) in
-                            await jitter(f.code, salt)
-                            return F.foldFailure(f)
+                            await work(f.code) { F.foldFailure(f) }
                         }
                     ).attach(upstream)
                 )
@@ -200,8 +199,7 @@ extension RealStage {
                     ordered: o,
                     bufferLimit: b,
                     then: { (v: Int) in
-                        await jitter(v, salt)
-                        return F.matched(v)
+                        await work(v) { F.matched(v) }
                     }
                 ).attach(upstream)
             case .matchValue(let x):
@@ -211,8 +209,7 @@ extension RealStage {
                     ordered: o,
                     bufferLimit: b,
                     then: {
-                        await jitter(x, salt)
-                        return F.matchedValue(x)
+                        await work(x) { F.matchedValue(x) }
                     }
                 ).attach(upstream)
             case .matchType:
@@ -222,19 +219,16 @@ extension RealStage {
                     ordered: o,
                     bufferLimit: b,
                     then: { (v: Int) -> Element in
-                        await jitter(v, salt)
-                        return F.matched(v)
+                        await work(v) { F.matched(v) }
                     }
                 ).attach(upstream)
             case .tapMatch(let x):
                 return AsyncTapMatch(x) {
-                    await jitter(x, salt)
-                    log.add("\(i) tapMatch")
+                    await work(x) { log.add("\(i) tapMatch") }
                 }.attach(upstream)
             case .tapMatchType:
                 return AsyncTapMatch(Int.self) { (v: Int) in
-                    await jitter(v, salt)
-                    log.add("\(i) tapMatchType \(v)")
+                    await work(v) { log.add("\(i) tapMatchType \(v)") }
                 }.attach(upstream)
             default: preconditionFailure("\(op) is not a match op")
         }
@@ -277,8 +271,7 @@ extension RealStage {
                     ordered: o,
                     bufferLimit: b,
                     then: { (payload: Int) in
-                        await jitter(payload, salt)
-                        return F.extracted(payload)
+                        await work(payload) { F.extracted(payload) }
                     }
                 ).attach(upstream)
             case .matchErrorValue(let code):
@@ -288,8 +281,7 @@ extension RealStage {
                     ordered: o,
                     bufferLimit: b,
                     then: {
-                        await jitter(code, salt)
-                        return F.extracted(code)
+                        await work(code) { F.extracted(code) }
                     }
                 ).attach(upstream)
             case .matchErrorType:
@@ -299,16 +291,14 @@ extension RealStage {
                     ordered: o,
                     bufferLimit: b,
                     then: { (f: Fail) -> Element in
-                        await jitter(f.code, salt)
-                        return F.flatMapError(2, f)
+                        await work(f.code) { F.flatMapError(2, f) }
                     }
                 ).attach(upstream)
             case .tapMatchError(let m):
                 return AsyncTapMatchError(
                     where: { (f: Fail) in F.errorMatches(m, f) },
                     then: { (f: Fail) in
-                        await jitter(f.code, salt)
-                        log.add("\(i) tapMatchError \(f.code)")
+                        await work(f.code) { log.add("\(i) tapMatchError \(f.code)") }
                     }
                 ).attach(upstream)
             default: preconditionFailure("\(op) is not a matchError op")

@@ -1,0 +1,19 @@
+# Settings for the Hegel property tests in Tests/FPPipePropertyTests. The
+# tests set no case counts of their own, so HEGEL_* environment variables
+# override these, for a deep run:
+#
+#   HEGEL_TEST_CASES=10000 swift test --filter FPPipePropertyTests
+#   HEGEL_DEFAULT_PROFILE=nightly swift test --filter FPPipePropertyTests
+#
+# `development` is the profile for local runs, `ci` the one Hegel picks on a
+# CI server (derandomized, with no failure database).
+
+[profiles.development]
+test_cases = 1_000
+
+[profiles.ci]
+test_cases = 1_000
+
+[profiles.nightly]
+test_cases = 10_000
+derandomize = false

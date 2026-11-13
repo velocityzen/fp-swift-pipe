@@ -99,7 +99,16 @@ struct PipeSpec: Sendable, CustomStringConvertible {
         return pipe
     }
 
-    var description: String { "\(source), yields \(sourceYields) → \(stages)" }
+    var description: String {
+        let input = self.input.map { element in
+            switch element {
+                case .success(let v): "\(v)"
+                case .failure(let f): "Fail(\(f.code))"
+            }
+        }
+        return
+            "[\(input.joined(separator: ", "))] from \(source), yields \(sourceYields) → \(stages)"
+    }
 }
 
 func realPipe(_ input: [Element], _ stages: [Stage], log: Log) -> Pipe<Int, Fail> {

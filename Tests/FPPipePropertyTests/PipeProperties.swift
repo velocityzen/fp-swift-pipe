@@ -5,54 +5,81 @@ import FPPipe
 import HegelTesting
 import Testing
 
+/// The states the properties exist to test, as `tc.event` labels. Each
+/// `property(reaching:)` fails a run that never records one of its labels.
+enum Reach {
+    static let unordered = "an unordered stage"
+    static let reordered = "output came out of source order"
+    static let overlapped = "a stage's closures overlapped"
+    static let atConcurrencyLimit = "a concurrent stage ran its limit of closures"
+    static let atBufferLimit = "an ordered stage's bufferLimit held its closures back"
+    static let stoppedEarly = "the reader stopped before the pipe ended"
+    static let unorderedStoppedEarly = "the reader stopped an unordered pipe early"
+    static let failureReached = "the pipe gave a failure"
+    static let countCut = "Take or Drop changed an unordered output"
+    static let concurrentRerun = "a concurrent pipe gave elements twice"
+    static let cancelledMidway = "the reader was cancelled with elements left"
+    static let leftHanging = "a closure hung when the reader stopped"
+    static let cancelledWhileHanging = "the reader was cancelled with a closure hung"
+    static let stoppedWhileHanging = "the reader stopped by itself with a closure hung"
+    static let hungBehindStages = "a closure hung behind later stages"
+    static let heldBack = "a slow reader held the source back"
+}
+
 @Suite("Pipe properties", .hegel)
 struct PipeProperties {
     /// Any chain of stages, read by any sink, gives what the model gives.
     ///
     /// - With no unordered stage, the output is the same, in order.
-    /// - With one, the same elements in some order.
+    /// - With one, it is what some order of the model's output gives.
     /// - With nothing concurrent, the source reads and side effects happen
     ///   in the same order too: the pipe reads only what the sink needs.
     /// - Otherwise, when every element is read, the same side effects
     ///   happen, in some order; when not, only ones the model could cause.
-    @Test(.hegel(testCases: 1_000))
+    /// - No stage runs more closures at once than its `concurrency`, or, when
+    ///   ordered, than `bufferLimit + 1`; the tap stages run one at a time.
+    @Test
     func pipesMatchTheModel() async throws {
-        try await property { tc in
-            let spec = try tc.draw(PipeGen.spec, named: "pipe")
+        try await property(
+            reaching: [
+                Reach.unordered, Reach.reordered, Reach.overlapped, Reach.atConcurrencyLimit,
+                Reach.atBufferLimit, Reach.stoppedEarly, Reach.unorderedStoppedEarly,
+                Reach.failureReached,
+            ]
+        ) { tc in
+            let policy = try tc.draw(PipeGen.policy, named: "policy")
+            let spec = try tc.draw(PipeGen.spec(policy), named: "pipe")
             let stages = spec.stages
             let unordered = stages.contains(where: \.isUnordered)
             let concurrent = stages.contains(where: \.isConcurrent)
-            let sink =
-                unordered
-                ? Sink.toArray : try tc.draw(.element(of: Sink.allCases), named: "sink")
+            // `toArray` half the time: it reads every element, so it checks
+            // the most, the multiset of an unordered pipe included.
+            let sink = try tc.draw(
+                .oneOf(.just(.toArray), .element(of: Sink.allCases)),
+                named: "sink"
+            )
             let consumer =
                 sink == .toArray
                 ? try tc.draw(.element(of: Consumer.allCases), named: "consumer") : .prompt
-
             let prefixLength =
                 sink == .prefix
                 ? try tc.draw(.oneOf(.int(in: 0...4), .int(in: 0...Int.max)), named: "prefix")
                 : 0
 
-            let log = Log()
-            let pipe = spec.pipe(log: log)
-            guard
-                let real = await withinDeadline(
-                    deadline,
-                    { await sink.run(pipe, consumer, prefixLength: prefixLength) }
-                )
-            else {
-                Issue.record("the pipe hung")
-                return
+            let (real, log) = try await tc.withStallDetection(after: stallLimit) { heartbeat in
+                let log = Log(onProgress: { heartbeat.beat() })
+                let pipe = spec.pipe(log: log)
+                return (await sink.run(pipe, consumer, prefixLength: prefixLength), log)
             }
             let modelLog = ModelLog()
             let expected = sink.run(
                 modelPipe(spec.input, stages, log: modelLog),
                 prefixLength: prefixLength
             )
+            let all = drained(spec.input, stages)
 
-            if unordered, case .array(let got) = real, case .array(let want) = expected {
-                #expect(counts(got) == counts(want), "\(got) is not \(want) in any order")
+            if unordered {
+                expectSomeOrder(real, of: all, sink: sink, prefixLength: prefixLength)
             } else {
                 #expect(real == expected)
             }
@@ -63,16 +90,22 @@ struct PipeProperties {
             } else {
                 expectPlausibleLog(log.all, spec)
             }
+            expectWithinClosureLimits(stages, log)
+
+            let stoppedEarly =
+                sink != .toArray && modelReads(modelLog) < modelReads(drainedLog(spec))
+            try recordReach(tc, spec, real: real, log: log, stoppedEarly: stoppedEarly)
         }
     }
 
     /// `Take` or `Drop` after an unordered stage keeps elements that depend
     /// on timing, but how many it keeps does not, and each is one the pipe
     /// without it would give.
-    @Test(.hegel(testCases: 500))
+    @Test
     func countingAfterUnorderedStages() async throws {
-        try await property { tc in
-            var spec = try tc.draw(PipeGen.spec, named: "pipe")
+        try await property(reaching: [Reach.countCut]) { tc in
+            let policy = try tc.draw(PipeGen.policy, named: "policy")
+            var spec = try tc.draw(PipeGen.spec(policy), named: "pipe")
             let unordered = try tc.draw(
                 Hegel.zip(
                     PipeGen.op.filter(\.hasConcurrency),
@@ -92,11 +125,10 @@ struct PipeProperties {
                 Stage(op: tail, async: nil, salt: 0),
             ]
 
-            let log = Log()
-            let pipe = spec.pipe(log: log)
-            guard let real = await withinDeadline(deadline, { await pipe.toArray() }) else {
-                Issue.record("the pipe hung")
-                return
+            let counted = spec
+            let (real, log) = try await tc.withStallDetection(after: stallLimit) { heartbeat in
+                let log = Log(onProgress: { heartbeat.beat() })
+                return (await counted.pipe(log: log).toArray(), log.all)
             }
             let all = drained(spec.input, Array(spec.stages.dropLast()))
             let count: Int =
@@ -107,99 +139,30 @@ struct PipeProperties {
                 }
             #expect(real.count == count)
             #expect(isSubmultiset(real, of: all), "\(real) has elements the pipe would not give")
-            expectPlausibleLog(log.all, spec)
-        }
-    }
+            expectPlausibleLog(log, spec)
 
-    /// Cancelling the reading task at any point stops the pipe: a read that
-    /// starts after the cancel gives nothing, what the reads before it gave
-    /// is what the model gives, and with no cancel the pipe gives it all.
-    ///
-    /// The cancel lands on a drawn checkpoint: the source reading an
-    /// element, a stage's side effect, in a concurrent stage's worker too,
-    /// or the reader getting an element.
-    @Test(.hegel(testCases: 500))
-    func cancellingTheReaderStopsThePipe() async throws {
-        try await property { tc in
-            let spec = try tc.draw(PipeGen.spec, named: "pipe")
-            let all = drained(spec.input, spec.stages)
-            // Every source read and side effect is one the model could
-            // cause (`expectPlausibleLog`), and the reader gets at most what
-            // the model gives: the real number of checkpoints.
-            let checkpoints = everyEffect(spec.input, spec.stages).count + all.count
-            let run = try await tc.withRandomCancellation(
-                checkpoints: 0...checkpoints
-            ) { cancellation in
-                let pipe = spec.pipe(log: Log(onEntry: { cancellation.checkpoint($0) }))
-                // The reader runs in a task of its own, so a hang fails the
-                // property instead of hanging it. It is cancelled with this
-                // one.
-                let reader = Task {
-                    var iterator = pipe.makeAsyncIterator()
-                    var got: [Element] = []
-                    var after: [Element] = []
-                    while true {
-                        let cancelled = Task.isCancelled
-                        guard let element = await iterator.next() else { break }
-                        if cancelled {
-                            after.append(element)
-                        } else {
-                            got.append(element)
-                            cancellation.checkpoint("reader got \(got.count)")
-                        }
-                    }
-                    return (got, after)
-                }
-                let read = await withTaskCancellationHandler {
-                    await withinDeadline(deadline) { await reader.value }
-                } onCancel: {
-                    reader.cancel()
-                }
-                if read == nil { reader.cancel() }
-                return read
-            }
-            guard let (got, after) = run.value else {
-                Issue.record("the pipe hung")
-                return
-            }
-            let unordered = spec.stages.contains(where: \.isUnordered)
-            if unordered {
-                #expect(isSubmultiset(got + after, of: all))
-            } else {
-                #expect(got + after == Array(all.prefix(got.count + after.count)))
-            }
-            #expect(after.isEmpty, "the pipe gave \(after) after it was cancelled")
-            if run.cancelledAt == nil {
-                if unordered {
-                    #expect(counts(got) == counts(all), "the pipe stopped early")
-                } else {
-                    #expect(got == all, "the pipe stopped early")
-                }
-            }
+            if count > 0, count < all.count { try tc.event(Reach.countCut) }
         }
     }
 
     /// A pipe stores no state: reading it again gives the same elements.
-    @Test(.hegel(testCases: 500))
+    @Test
     func pipesRunAgain() async throws {
-        try await property { tc in
-            let spec = try tc.draw(PipeGen.spec, named: "pipe")
-            let pipe = spec.pipe(log: Log())
-            guard
-                let (first, second) = await withinDeadline(
-                    deadline,
-                    {
-                        (await pipe.toArray(), await pipe.toArray())
-                    }
-                )
-            else {
-                Issue.record("the pipe hung")
-                return
+        try await property(reaching: [Reach.concurrentRerun]) { tc in
+            let policy = try tc.draw(PipeGen.policy, named: "policy")
+            let spec = try tc.draw(PipeGen.spec(policy), named: "pipe")
+            let (first, second) = try await tc.withStallDetection(after: stallLimit) { heartbeat in
+                let pipe = spec.pipe(log: Log(onProgress: { heartbeat.beat() }))
+                return (await pipe.toArray(), await pipe.toArray())
             }
             if spec.stages.contains(where: \.isUnordered) {
                 #expect(counts(first) == counts(second))
             } else {
                 #expect(first == second)
+            }
+
+            if !first.isEmpty, spec.stages.contains(where: \.isConcurrent) {
+                try tc.event(Reach.concurrentRerun)
             }
         }
     }
@@ -208,10 +171,11 @@ struct PipeProperties {
     /// `if`/`else` and a `switch`, gives the same pipe as the model: as a
     /// pipe, as an `OpenPipe`, and from a source that cannot fail, widened by
     /// its first stage.
-    @Test(.hegel(testCases: 500))
+    @Test
     func builderMatchesTheModel() async throws {
-        try await property { tc in
-            let input = try tc.draw(PipeGen.input, named: "input")
+        try await property(reaching: ["if", "else", "switch 0", "switch 1", "switch 2"]) { tc in
+            let failureRate = try tc.draw(PipeGen.failureRate, named: "failureRate")
+            let input = try tc.draw(PipeGen.input(failureRate: failureRate), named: "input")
             let p = try tc.draw(
                 Hegel.zip(
                     .array(of: .bool(), count: BuilderSlots.count...BuilderSlots.count),
@@ -242,26 +206,20 @@ struct PipeProperties {
             )
             let mode = try tc.draw(.element(of: BuilderMode.allCases), named: "mode")
 
-            let log = Log()
-            let modelInput: [Element]
-            let pipe: Pipe<Int, Fail>
-            switch mode {
-                case .pipe:
-                    modelInput = input
-                    pipe = builtPipe(LoggedSource(elements: input, log: log), p, log: log)
-                case .openPipe:
-                    modelInput = input
-                    pipe = builtOpenPipe(LoggedSource(elements: input, log: log), p, log: log)
-                case .widened:
-                    let values = input.compactMap { try? $0.get() }
-                    modelInput = values.map(Element.success)
-                    pipe = builtWidenedPipe(values, p, log: log)
-            }
+            let values = input.compactMap { try? $0.get() }
+            let modelInput = mode == .widened ? values.map(Element.success) : input
             let slots = BuilderSlots.stages(p)
             tc.note("stages: \(slots.map(\.stage))")
-            guard let real = await withinDeadline(deadline, { await pipe.toArray() }) else {
-                Issue.record("the pipe hung")
-                return
+            let (real, log) = try await tc.withStallDetection(after: stallLimit) { heartbeat in
+                let log = Log(onProgress: { heartbeat.beat() })
+                let pipe: Pipe<Int, Fail> =
+                    switch mode {
+                        case .pipe: builtPipe(LoggedSource(elements: input, log: log), p, log: log)
+                        case .openPipe:
+                            builtOpenPipe(LoggedSource(elements: input, log: log), p, log: log)
+                        case .widened: builtWidenedPipe(values, p, log: log)
+                    }
+                return (await pipe.toArray(), log.all)
             }
 
             let modelLog = ModelLog()
@@ -275,10 +233,138 @@ struct PipeProperties {
                 let expected =
                     mode == .widened
                     ? modelLog.entries.filter { !$0.hasPrefix("read ") } : modelLog.entries
-                #expect(log.all == expected)
+                #expect(log == expected)
             }
+
+            try tc.event(p.on[BuilderSlots.count - 1] ? "if" : "else")
+            try tc.event("switch \(p.branch)")
         }
     }
+}
+
+// MARK: - Closure limits
+
+/// Checks that no async stage ran more closures at once than the docs let
+/// it: `concurrency`, and with `ordered`, `bufferLimit + 1` when that is
+/// lower.
+func expectWithinClosureLimits(_ stages: [Stage], _ log: Log) {
+    for (index, stage) in stages.enumerated() {
+        guard let async = stage.async else { continue }
+        let peak = log.peak(index)
+        #expect(peak <= async.concurrency, "stage \(index), \(stage), ran \(peak) closures at once")
+        if async.ordered, async.isConcurrent, async.bufferLimit < async.concurrency - 1 {
+            #expect(
+                peak <= async.bufferLimit + 1,
+                "stage \(index), \(stage), ran \(peak) closures at once"
+            )
+        }
+    }
+}
+
+// MARK: - Reach
+
+/// Records the states `pipesMatchTheModel` reached.
+func recordReach(
+    _ tc: TestCase,
+    _ spec: PipeSpec,
+    real: SinkOutput,
+    log: Log,
+    stoppedEarly: Bool
+) throws {
+    let all = drained(spec.input, spec.stages)
+    let unordered = spec.stages.contains(where: \.isUnordered)
+    if unordered {
+        try tc.event(Reach.unordered)
+        if case .array(let got) = real, got != Array(all.prefix(got.count)) {
+            try tc.event(Reach.reordered)
+        }
+    }
+    let peaks = spec.stages.indices.map(log.peak)
+    if peaks.contains(where: { $0 > 1 }) { try tc.event(Reach.overlapped) }
+    for (index, stage) in spec.stages.enumerated() {
+        guard let async = stage.async, async.isConcurrent, peaks[index] > 0 else { continue }
+        if peaks[index] == async.concurrency { try tc.event(Reach.atConcurrencyLimit) }
+        // At the limit, with more closures to run than it lets run at once.
+        if async.closureLimit < async.concurrency, peaks[index] == async.closureLimit,
+            log.runs(index) > async.closureLimit
+        {
+            try tc.event(Reach.atBufferLimit)
+        }
+    }
+    if stoppedEarly {
+        try tc.event(Reach.stoppedEarly)
+        if unordered { try tc.event(Reach.unorderedStoppedEarly) }
+    }
+    if all.contains(where: { (try? $0.get()) == nil }) { try tc.event(Reach.failureReached) }
+    try tc.event("input count", value: Double(spec.input.count))
+    try tc.event("stage count", value: Double(spec.stages.count))
+}
+
+// MARK: - Unordered sinks
+
+/// Checks what a sink gave from an unordered pipe: what it gives from some
+/// order of `all`, the model's output read to the end.
+func expectSomeOrder(_ real: SinkOutput, of all: [Element], sink: Sink, prefixLength: Int) {
+    let values = all.compactMap { try? $0.get() }
+    let failures = all.compactMap { element -> Fail? in
+        if case .failure(let f) = element { f } else { nil }
+    }
+    switch real {
+        case .array(let got) where sink == .toArray:
+            #expect(counts(got) == counts(all), "\(got) is not \(all) in any order")
+        case .array(let got):
+            #expect(got.count == min(prefixLength, all.count), "the prefix has the wrong length")
+            #expect(isSubmultiset(got, of: all), "\(got) has elements the pipe would not give")
+        case .first(let got): expectOneOf(got, all)
+        case .firstSuccess(let got): expectOneOf(got, values)
+        case .firstError(let got): expectOneOf(got, failures)
+        case .result(.success(let got)):
+            #expect(failures.isEmpty, "toResult succeeded, but the pipe gives \(failures)")
+            #expect(counts(got) == counts(values), "toResult gave \(got), not \(values)")
+        case .result(.failure(let got)):
+            #expect(failures.contains(got), "toResult failed with \(got), not in \(failures)")
+        case .reduce(.success):
+            // The fold depends on the order, so only its kind is known.
+            #expect(failures.isEmpty, "reduce succeeded, but the pipe gives \(failures)")
+        case .reduce(.failure(let got)):
+            #expect(failures.contains(got), "reduce failed with \(got), not in \(failures)")
+    }
+}
+
+/// Checks what a `first` sink gave: one of `candidates`, or nil when there
+/// are none.
+func expectOneOf<T: Equatable>(
+    _ got: T?,
+    _ candidates: [T],
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    guard let got else {
+        #expect(
+            candidates.isEmpty,
+            "gave nil, not one of \(candidates)",
+            sourceLocation: sourceLocation
+        )
+        return
+    }
+    #expect(
+        candidates.contains(got),
+        "gave \(got), not one of \(candidates)",
+        sourceLocation: sourceLocation
+    )
+}
+
+// MARK: - Reach helpers
+
+/// How many source reads a model log holds.
+func modelReads(_ log: ModelLog) -> Int {
+    log.entries.count(where: { $0.hasPrefix("read ") })
+}
+
+/// The log of the model read to the end.
+func drainedLog(_ spec: PipeSpec) -> ModelLog {
+    let log = ModelLog()
+    _ = drained(spec.input, spec.stages, log: log)
+    return log
 }
 
 #endif
