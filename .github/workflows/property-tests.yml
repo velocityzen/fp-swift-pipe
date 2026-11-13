@@ -59,12 +59,18 @@ jobs:
           HEGEL_STATISTICS=1 swift test --filter FPPipePropertyTests 2>&1 \
             | tee "$RUNNER_TEMP/property-tests.log"
 
-      # A failure's report ends with the trait that replays it, so the
-      # failing case can be run locally.
+      # Each failure's report, from the issue through its test's "failed
+      # after" line. A Hegel report ends with the trait that replays it, so
+      # the failing case can be run locally. A report can be any length: a
+      # draw may print across many lines.
       - name: Show failures
         if: failure()
         run: |
-          grep -E -A40 "recorded an issue" "$RUNNER_TEMP/property-tests.log" | cut -c1-400 || true
+          awk '
+            /recorded an issue/ { shown = 0; on = 1 }
+            on { print; shown++ }
+            on && (/failed after/ || shown >= 200) { on = 0; print "" }
+          ' "$RUNNER_TEMP/property-tests.log" | cut -c1-400
 
   linux:
     name: Property tests Linux
@@ -92,4 +98,8 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E -A40 "recorded an issue" "$RUNNER_TEMP/property-tests.log" | cut -c1-400 || true
+          awk '
+            /recorded an issue/ { shown = 0; on = 1 }
+            on { print; shown++ }
+            on && (/failed after/ || shown >= 200) { on = 0; print "" }
+          ' "$RUNNER_TEMP/property-tests.log" | cut -c1-400

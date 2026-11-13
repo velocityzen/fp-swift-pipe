@@ -36,9 +36,9 @@ struct PipeBenchmarks {
         print("[bench] long-chain 10K → \(collected) elements in \(elapsed)")
         #expect(collected > 0)
         if case .failure = result { Issue.record("expected success") }
-        // About 25ms locally.
+        // About 25ms locally and 30–100ms on CI, but a slow macOS runner once took 414ms.
         #if os(macOS) || os(Linux)
-        #expect(elapsed < .milliseconds(250), "10-stage chain over 10K elements took \(elapsed)")
+        #expect(elapsed < .seconds(1), "10-stage chain over 10K elements took \(elapsed)")
         #endif
     }
 
