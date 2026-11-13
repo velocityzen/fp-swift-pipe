@@ -40,11 +40,18 @@ let package = Package(
             name: "FPPipeTests",
             dependencies: ["FPPipe"]
         ),
+        // Hegel's engine is built for macOS and Linux only, so on the other
+        // platforms this target is empty: every file is behind
+        // `#if os(macOS) || os(Linux)`.
         .testTarget(
             name: "FPPipePropertyTests",
             dependencies: [
                 "FPPipe",
-                .product(name: "HegelTesting", package: "hegel-swift"),
+                .product(
+                    name: "HegelTesting",
+                    package: "hegel-swift",
+                    condition: .when(platforms: [.macOS, .linux])
+                ),
             ]
         ),
     ],
