@@ -14,11 +14,11 @@ extension PipeProperties {
     ///
     /// The cancel lands on a drawn checkpoint: the source reading an
     /// element, a stage's side effect, in a concurrent stage's worker too,
-    /// or the reader getting an element. A read that is never cancelled has
-    /// a stall limit too: the watchdog's.
+    /// or the reader getting an element. The run before the cancel, or a
+    /// run with no cancel, has a stall limit too: every checkpoint and every
+    /// closure starting or ending is progress.
     @Test
     func cancellingTheReaderStopsThePipe() async throws {
-        let watchdog = Watchdog()
         try await property(
             examples: Self.cancelledBeforeReading,
             reaching: [Reach.cancelledMidway]
@@ -32,29 +32,27 @@ extension PipeProperties {
             let checkpoints = everyEffect(spec.input, spec.stages).count + all.count
             let run = try await tc.withRandomCancellation(
                 checkpoints: 0...checkpoints,
-                endsWithin: stallLimit
+                endsWithin: stallLimit,
+                stallsAfter: stallLimit
             ) { cancellation in
-                try await watchdog.run { pulse in
-                    let log = Log(
-                        onEntry: { cancellation.checkpoint($0) },
-                        onProgress: { pulse.beat() }
-                    )
-                    var iterator = spec.pipe(log: log).makeAsyncIterator()
-                    var got: [Element] = []
-                    var after: [Element] = []
-                    while true {
-                        let cancelled = Task.isCancelled
-                        guard let element = await iterator.next() else { break }
-                        pulse.beat()
-                        if cancelled {
-                            after.append(element)
-                        } else {
-                            got.append(element)
-                            cancellation.checkpoint("reader got \(got.count)")
-                        }
+                let log = Log(
+                    onEntry: { cancellation.checkpoint($0) },
+                    onProgress: { cancellation.beat() }
+                )
+                var iterator = spec.pipe(log: log).makeAsyncIterator()
+                var got: [Element] = []
+                var after: [Element] = []
+                while true {
+                    let cancelled = Task.isCancelled
+                    guard let element = await iterator.next() else { break }
+                    if cancelled {
+                        after.append(element)
+                    } else {
+                        got.append(element)
+                        cancellation.checkpoint("reader got \(got.count)")
                     }
-                    return (got, after)
                 }
+                return (got, after)
             }
             let (got, after) = run.value
             let unordered = spec.stages.contains(where: \.isUnordered)
@@ -106,7 +104,6 @@ extension PipeProperties {
     /// it.
     @Test
     func stoppingTheReaderCancelsItsWork() async throws {
-        let watchdog = Watchdog()
         try await property(
             reaching: [
                 Reach.leftHanging, Reach.cancelledWhileHanging, Reach.stoppedWhileHanging,
@@ -120,22 +117,20 @@ extension PipeProperties {
             let started: @Sendable () -> Int = { probe.started + stubborn.started }
             let run = try await tc.withRandomCancellation(
                 checkpoints: 0...(setup.wanted + setup.hangs),
-                endsWithin: stallLimit
+                endsWithin: stallLimit,
+                stallsAfter: stallLimit
             ) { cancellation in
-                try await watchdog.run { pulse in
-                    await setup.read(
-                        cancellation: cancellation,
-                        pulse: pulse,
-                        started: started,
-                        hang: {
-                            if setup.stubborn {
-                                await stubborn.run()
-                            } else {
-                                await probe.hang(atMost: stallLimit)
-                            }
+                await setup.read(
+                    cancellation: cancellation,
+                    started: started,
+                    hang: {
+                        if setup.stubborn {
+                            await stubborn.run()
+                        } else {
+                            await probe.hang(atMost: stallLimit)
                         }
-                    )
-                }
+                    }
+                )
             }
             // The reader has ended, and no stubborn hang can have.
             let leftRunning = stubborn.running
@@ -232,7 +227,6 @@ struct HangingPipe: Sendable {
     /// many elements it got.
     func read(
         cancellation: Cancellation,
-        pulse: Pulse,
         started: @escaping @Sendable () -> Int,
         hang: @escaping @Sendable () async -> Void
     ) async -> Int {
@@ -241,7 +235,7 @@ struct HangingPipe: Sendable {
             hangingAt: position,
             stage,
             on: { F.matches(m, $0) },
-            log: Log(onProgress: { pulse.beat() }),
+            log: Log(onProgress: { cancellation.beat() }),
             hang: { v in
                 cancellation.checkpoint("hang \(v)")
                 await hang()
@@ -251,7 +245,6 @@ struct HangingPipe: Sendable {
         var got = 0
         while got < wanted, await iterator.next() != nil {
             got += 1
-            pulse.beat()
             cancellation.checkpoint("reader got \(got)")
         }
         if lingers, hangs > 0 {
