@@ -83,9 +83,8 @@ func readmeForLoopOutsideThePipe() async {
     #expect(await pipe.toResult() == .success([2, 4, 6]))
 }
 
-@Test
-func readmeBranchOutsideThePipe() async {
-    let needsDoubling = true
+@Test(arguments: [true, false])
+func readmeBranchOutsideThePipe(needsDoubling: Bool) async {
     let base = Pipe<Int, Never> { From(0..<10) }
 
     let final =
@@ -96,5 +95,6 @@ func readmeBranchOutsideThePipe() async {
         }
         : base
 
-    #expect(await final.toResult() == .success(Array(stride(from: 0, to: 20, by: 2))))
+    let expected = needsDoubling ? Array(stride(from: 0, to: 20, by: 2)) : Array(0..<10)
+    #expect(await final.toResult() == .success(expected))
 }

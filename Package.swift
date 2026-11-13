@@ -16,7 +16,13 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.3.0")
+        // A local checkout for its concurrent-map deadlock fix, until the
+        // fp-swift release with it. Then go back to the URL, with that
+        // release as the minimum.
+        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.4.1"),
+        // Property-based tests. Test targets only, so FPPipe's users never
+        // fetch it.
+        .package(url: "https://github.com/velocityzen/hegel-swift", from: "0.51.1"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -33,6 +39,13 @@ let package = Package(
         .testTarget(
             name: "FPPipeTests",
             dependencies: ["FPPipe"]
+        ),
+        .testTarget(
+            name: "FPPipePropertyTests",
+            dependencies: [
+                "FPPipe",
+                .product(name: "HegelTesting", package: "hegel-swift"),
+            ]
         ),
     ],
     swiftLanguageModes: [.v6]

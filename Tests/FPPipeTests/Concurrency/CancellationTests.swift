@@ -228,3 +228,46 @@ func breakingOutOfForAwaitTearsDownPipe() async {
     let total = totalProduced.withLock { $0 }
     #expect(total <= 6, "produced \(total): sequential pipe kept producing after break")
 }
+
+// MARK: - Sources stop once the reading task is cancelled
+
+/// Reads two elements, cancels the reading task, and reads on.
+private func elementsAfterCancelling(_ pipe: Pipe<Int, E>) async -> [Result<Int, E>] {
+    await Task {
+        var iterator = pipe.makeAsyncIterator()
+        _ = await iterator.next()
+        _ = await iterator.next()
+        withUnsafeCurrentTask { $0?.cancel() }
+        var after: [Result<Int, E>] = []
+        while let element = await iterator.next() {
+            after.append(element)
+        }
+        return after
+    }.value
+}
+
+@Test(arguments: ["From(Sequence)", "From(AsyncSequence)", "FromResult"])
+func sourcesStopOnceTheReaderIsCancelled(source: String) async {
+    let values = Array(0..<10)
+    let results = AsyncStream<Result<Int, E>> { continuation in
+        for value in values { continuation.yield(.success(value)) }
+        continuation.finish()
+    }
+    let stream = AsyncStream<Int> { continuation in
+        for value in values { continuation.yield(value) }
+        continuation.finish()
+    }
+    let pipe: Pipe<Int, E> =
+        switch source {
+            case "From(Sequence)":
+                Pipe {
+                    From(values); MapError { (_: Never) -> E in }
+                }
+            case "From(AsyncSequence)":
+                Pipe {
+                    From(stream); MapError { (_: Never) -> E in }
+                }
+            default: Pipe { FromResult(results) }
+        }
+    #expect(await elementsAfterCancelling(pipe).isEmpty)
+}

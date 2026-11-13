@@ -1,13 +1,31 @@
 {
-  "originHash" : "7de2e0294257d20b2a7822a77bb7f91d1c6ca9efb782006c71c4d7ec2b699206",
+  "originHash" : "99607d70df8d3e7c77a6c4a9a483e8317a000e5cfe9bcda63938d8b4612972a2",
   "pins" : [
     {
       "identity" : "fp-swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/velocityzen/fp-swift",
       "state" : {
-        "revision" : "e34f98ddfea3244171242f48dc0b4bd18b13ecdc",
-        "version" : "4.3.0"
+        "revision" : "1660c1c4ea016dd71440d161bd191502b0a71e34",
+        "version" : "4.4.1"
+      }
+    },
+    {
+      "identity" : "hegel-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/velocityzen/hegel-swift",
+      "state" : {
+        "revision" : "70023aae041355be2ab5996cb41459aafe9629a7",
+        "version" : "0.51.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "050f1a346fbbac0ca2cfb15a95274f7bd1cf0ccf",
+        "version" : "604.0.0"
       }
     }
   ],

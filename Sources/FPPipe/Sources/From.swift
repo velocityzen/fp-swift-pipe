@@ -16,7 +16,7 @@ where S.Element == Result<V, E>, S.Failure == Never {
     @inlinable
     func produce() -> Pipe<V, E> {
         let make = self.make
-        return .iterating { .init(make().makeAsyncIterator()) }
+        return .iterating { .init(CancellableIterator(make().makeAsyncIterator())) }
     }
 }
 
@@ -157,13 +157,16 @@ struct LiftingSyncIterator<Base: IteratorProtocol>: AsyncIteratorProtocol {
 
     @inlinable
     mutating func next() async -> Result<Base.Element, Never>? {
-        base.next().map(Result.success)
+        // Like every source, it stops once the reading task is cancelled.
+        guard !Task.isCancelled else { return nil }
+        return base.next().map(Result.success)
     }
 
     @inlinable
     mutating func next(isolation actor: isolated (any Actor)?) async -> Result<Base.Element, Never>?
     {
-        base.next().map(Result.success)
+        guard !Task.isCancelled else { return nil }
+        return base.next().map(Result.success)
     }
 }
 
@@ -187,7 +190,33 @@ where Base.Failure == Never {
     mutating func next(isolation actor: isolated (any Actor)?) async -> Result<Base.Element, Never>?
     {
         // Stays on the caller's actor. It cannot throw (`Base.Failure == Never`).
-        guard let element = await base.next(isolation: actor) else { return nil }
+        guard !Task.isCancelled, let element = await base.next(isolation: actor) else {
+            return nil
+        }
         return .success(element)
+    }
+}
+
+/// Reads an `AsyncSequence` and gives its elements unchanged, until the reading task is
+/// cancelled.
+@usableFromInline
+struct CancellableIterator<Base: AsyncIteratorProtocol>: AsyncIteratorProtocol
+where Base.Failure == Never {
+    @usableFromInline var base: Base
+
+    @inlinable
+    init(_ base: Base) {
+        self.base = base
+    }
+
+    @inlinable
+    mutating func next() async -> Base.Element? {
+        await next(isolation: #isolation)
+    }
+
+    @inlinable
+    mutating func next(isolation actor: isolated (any Actor)?) async -> Base.Element? {
+        guard !Task.isCancelled else { return nil }
+        return await base.next(isolation: actor)
     }
 }

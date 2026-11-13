@@ -37,7 +37,7 @@ func builderChainsFailureFixedStagesOnBoundChannel() async {
 func builderWidensNeverFailureIntoPolyValueStage() async {
     let pipe = Pipe<Int, TestError> {
         From([1, 2, 3])
-        MapError { (e: Never) -> TestError in switch e {} }
+        MapError { (_: Never) -> TestError in }
         FlatMap { (n: Int) -> Result<Int, TestError> in .success(n + 1) }
     }
 
@@ -80,7 +80,7 @@ func openPipeTransformsBoundFailureChannel() async {
 func openPipeWidensNeverFailureIntoPolyValueStage() async {
     let pipe = OpenPipe {
         From(Int.self)
-        MapError { (e: Never) -> TestError in switch e {} }
+        MapError { (_: Never) -> TestError in }
         FlatMap { (n: Int) -> Result<Int, TestError> in .success(n + 1) }
     }
 
