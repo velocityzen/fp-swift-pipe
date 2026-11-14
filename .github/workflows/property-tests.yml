@@ -1,9 +1,9 @@
 name: Property tests
 
-# The Hegel property tests, deep: hegel.toml's nightly profile runs 10,000
-# randomized cases per property. Pushes and pull requests run 1,000 cases
-# with CI's derandomized profile, so they see the same inputs every time;
-# this run is where new inputs come from.
+# The Hegel property tests, deep: ten times each property's cases (10,000
+# today), on inputs hegel.toml's nightly profile draws fresh. Pushes and pull
+# requests run 1,000 cases with CI's derandomized profile, so they see the
+# same inputs every time; this run is where new inputs come from.
 on:
   schedule:
     # Daily at 06:17 UTC, off the hour, when scheduled runs pile up.
@@ -21,6 +21,9 @@ concurrency:
 env:
   # Selects hegel.toml's nightly profile over CI's.
   HEGEL_DEFAULT_PROFILE: nightly
+  # Multiplies the count each property resolves to, its own or the
+  # profile's. hegel.toml says why this is a scale, not a profile count.
+  HEGEL_TEST_CASES_SCALE: "10"
   # swiftly (swift.org's toolchain installer), pinned and checked as in
   # ci.yml.
   SWIFTLY_VERSION: "1.2.0"
