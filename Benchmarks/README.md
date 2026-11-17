@@ -8,13 +8,13 @@ Every benchmark records wall clock and CPU time, instructions, malloc count and 
 
 | Target | Covers |
 | --- | --- |
-| `StageBenchmarks` | `From`, the synchronous value stages (`Map`, `Filter`, `CompactMap`, `FlatMap`, `Tap`, `Take`, `Drop`), a ten-stage chain, the failure stages (`FromResult`, `MapError`, `TapError`, `FlatMapError`, `GetOrElse`, `Alt`, `Match`), and the pattern-matching stages (`Match (pattern)`, `MatchError`, `TapMatch`, `TapMatchError`, plus its dynamic-cast form) |
+| `StageBenchmarks` | `From`, the synchronous value stages (`Map`, `Filter`, `CompactMap`, `FlatMap`, `Tap`, `Take`, `Drop`), a ten-stage chain, the failure stages (`FromResult`, `MapError`, `TapError`, `FlatMapError`, `GetOrElse`, `Alt`, `Match`, `FailOnCancellation`), and the pattern-matching stages (`Match (pattern)`, `MatchError`, `TapMatch`, `TapMatchError`, plus its dynamic-cast form) |
 | `AsyncStageBenchmarks` | the `Async*` stages, sequential and at `concurrency: 8`, and `FlatMapSequence` / `FlatMapAsyncSequence` at several `bufferSize`s |
 | `PipeBenchmarks` | the sources (`From` over an array or an async sequence, `FromAsync`, `OpenPipe`), the sinks (`toResult`, `toArray`, `reduce`), and the fixed cost of a short run |
 
 Most benchmarks run at `n: 16` and `n: 1024` elements, to separate the fixed cost of a run from its cost per element. Transforms are trivial (`$0 &* 2`), so the numbers are the pipeline's own overhead rather than the work it runs.
 
-Entries marked `(baseline)` are the hand-written floor for the same job (a plain `for` loop, a plain `for await`, the ten stages of `Long chain` as one loop, a raw `withTaskGroup`). The gap between a baseline and the pipeline next to it is what an optimization can win back.
+Entries marked `(baseline)` are the hand-written floor for the same job (a plain `for` loop, a plain `for await`, the ten stages of `Long chain` as one loop, the cancellation checks of `FailOnCancellation` around a plain read, a raw `withTaskGroup`). The gap between a baseline and the pipeline next to it is what an optimization can win back.
 
 ## Running
 

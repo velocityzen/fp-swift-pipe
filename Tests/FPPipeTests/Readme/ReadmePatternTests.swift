@@ -1,6 +1,7 @@
 // Examples from "Pattern matching" in Readme.md and the DocC articles. Keep all three
 // copies the same.
 
+import FP
 import FPPipe
 import Foundation
 import Synchronization

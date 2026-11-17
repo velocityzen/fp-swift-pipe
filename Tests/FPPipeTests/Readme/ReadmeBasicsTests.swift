@@ -1,7 +1,10 @@
 // Examples from "Quick start" to "Open pipes" in Readme.md and the DocC articles. Keep
-// all three copies the same.
+// all three copies the same. The rest of "Calling throwing code" is in
+// ReadmeURLSessionTests, which runs on Apple platforms only.
 
+import FP
 import FPPipe
+import Synchronization
 import Testing
 
 private enum ParseError: Error, Equatable {
@@ -22,6 +25,54 @@ private func makeStream() -> AsyncStream<Int> {
         continuation.yield(1)
         continuation.yield(2)
         continuation.finish()
+    }
+}
+
+// MARK: Polling
+
+private struct Status: Sendable, Equatable {
+    let isReady: Bool
+}
+
+private struct CheckError: Error, Equatable {}
+
+/// Counts its calls. Status checks fail on the first call and are not ready on the
+/// second.
+private final class Server: Sendable {
+    let calls = Mutex(0)
+
+    func status() async -> Status {
+        Status(isReady: next() > 2)
+    }
+
+    func check() async -> Result<Status, CheckError> {
+        next() == 1 ? .failure(CheckError()) : .success(Status(isReady: calls.withLock { $0 } > 2))
+    }
+
+    private func next() -> Int {
+        calls.withLock { calls in
+            calls += 1
+            return calls
+        }
+    }
+}
+
+// MARK: Calling throwing code
+
+private enum LoadError: Error {
+    case network(any Error)
+}
+
+private struct SocketClosed: Error {}
+
+private struct Socket: Sendable {
+    /// Gives two messages, then fails.
+    func messages() -> AsyncThrowingStream<String, any Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield("hello")
+            continuation.yield("world")
+            continuation.finish(throwing: SocketClosed())
+        }
     }
 }
 
@@ -104,13 +155,57 @@ func readmeRunningAPipeMoreThanOnce() async {
 }
 
 @Test
+func readmePolling() async {
+    let server = Server()
+    let statuses = Pipe<Status, Never> {
+        From(withRepeat(interval: .milliseconds(1)) { await server.status() })
+        Take(3)
+    }
+
+    #expect(
+        await statuses.toResult()
+            == .success([Status(isReady: false), Status(isReady: false), Status(isReady: true)])
+    )
+    // Each run makes its own calls.
+    #expect(await statuses.toArray().count == 3)
+    #expect(server.calls.withLock { $0 } == 6)
+}
+
+@Test
+func readmePollingResults() async {
+    let server = Server()
+    let check: @Sendable () async -> Result<Status, CheckError> = { await server.check() }
+
+    let ready = await Pipe<Status, CheckError> {
+        FromResult(withRepeat(interval: .milliseconds(1)) { await check() })
+        Filter { (status: Status) in status.isReady }
+    }
+    .firstSuccess()
+
+    #expect(ready == Status(isReady: true))
+    // A failed check, one that was not ready, and a ready one.
+    #expect(server.calls.withLock { $0 } == 3)
+}
+
+@Test
 func readmeReadingResults() async {
     let counts = Pipe<Int, Never> { From(1...4) }
 
     #expect(await counts.reduce(0) { sum, n in sum + n } == .success(10))
     #expect(await counts.firstSuccess() == 1)
+    #expect(await counts.lastSuccess() == 4)
+
+    let parity = await counts.reduce(into: [Bool: [Int]]()) { by, n in
+        by[n.isMultiple(of: 2), default: []].append(n)
+    }
+    #expect(parity == .success([false: [1, 3], true: [2, 4]]))
 
     let numbers = parsedNumbers()
+    let separated = await numbers.separate()
+    #expect(separated.successes == [2, 6])
+    #expect(separated.failures == [.notANumber("x")])
+    #expect(await numbers.firstSuccessOrLastError() == .success(2))
+
     var printed: [String] = []
     for await element in numbers {
         switch element {
@@ -119,6 +214,28 @@ func readmeReadingResults() async {
         }
     }
     #expect(printed == ["value: 2", #"error: notANumber("x")"#, "value: 6"])
+}
+
+@Test
+func readmeThrowingAsyncSequence() async throws {
+    let socket = Socket()
+
+    let messages = Pipe<String, LoadError> {
+        DeferResult { socket.messages().asResults() }
+        MapError(LoadError.network)
+    }
+
+    let elements = await messages.toArray()
+    #expect(elements.count == 3)
+    #expect(try elements[0].get() == "hello")
+    #expect(try elements[1].get() == "world")
+    guard case .failure(.network(let error)) = elements[2] else {
+        Issue.record("the last element is \(elements[2]), not the stream's error")
+        return
+    }
+    #expect(error is SocketClosed)
+    // `DeferResult` makes a new stream for every run.
+    #expect(await messages.toArray().count == 3)
 }
 
 @Test

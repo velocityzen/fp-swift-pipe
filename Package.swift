@@ -16,8 +16,9 @@ let package = Package(
         )
     ],
     dependencies: [
-        // 4.4.1 is the first release with the concurrent-map deadlock fix.
-        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.4.1"),
+        // 4.6.0 adds the result sinks, `failOnCancellation(with:)` and
+        // `asResults()` that the Readme shows on pipes.
+        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.6.0"),
         // Property-based tests. Test targets only, so FPPipe's users never
         // fetch it.
         .package(url: "https://github.com/velocityzen/hegel-swift", from: "0.51.8"),
@@ -34,9 +35,18 @@ let package = Package(
                 .enableUpcomingFeature("NonisolatedNonsendingByDefault")
             ]
         ),
+        // The sinks are fp-swift's. The test targets import FP for them, as
+        // the Readme tells users to, and `MemberImportVisibility` checks
+        // that they do.
         .testTarget(
             name: "FPPipeTests",
-            dependencies: ["FPPipe"]
+            dependencies: [
+                "FPPipe",
+                .product(name: "FP", package: "fp-swift"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("MemberImportVisibility")
+            ]
         ),
         // Hegel's engine is built for macOS and Linux only, so on the other
         // platforms this target is empty: every file is behind
@@ -45,11 +55,15 @@ let package = Package(
             name: "FPPipePropertyTests",
             dependencies: [
                 "FPPipe",
+                .product(name: "FP", package: "fp-swift"),
                 .product(
                     name: "HegelTesting",
                     package: "hegel-swift",
                     condition: .when(platforms: [.macOS, .linux])
                 ),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("MemberImportVisibility")
             ]
         ),
     ],

@@ -14,6 +14,7 @@ FPPipe builds async data pipelines in Swift. A pipe reads elements from a source
 - [How it works](#how-it-works)
 - [Sources](#sources)
   - [Running a pipe more than once](#running-a-pipe-more-than-once)
+  - [Polling](#polling)
 - [Reading results](#reading-results)
 - [Changing values](#changing-values)
 - [Handling failures](#handling-failures)
@@ -37,7 +38,7 @@ Requirements:
 - Swift 6.3 or later, in Swift 6 language mode
 - macOS, iOS, tvOS, watchOS or visionOS 26 or later, or Linux
 
-Add the package to `Package.swift`:
+FPPipe builds pipes. The sinks that read them, like `toResult()`, come from fp-swift. Add both packages to `Package.swift`:
 
 ```swift
 dependencies: [
@@ -45,21 +46,36 @@ dependencies: [
         url: "https://github.com/velocityzen/fp-swift-pipe",
         from: "2.1.0"
     ),
+    .package(
+        url: "https://github.com/velocityzen/fp-swift",
+        from: "4.6.0"
+    ),
 ],
 ```
 
-Then add the `FPPipe` product to your target:
+Then add the `FPPipe` and `FP` products to your target:
 
 ```swift
 .target(
     name: "MyApp",
-    dependencies: [.product(name: "FPPipe", package: "fp-swift-pipe")]
+    dependencies: [
+        .product(name: "FPPipe", package: "fp-swift-pipe"),
+        .product(name: "FP", package: "fp-swift"),
+    ]
 ),
+```
+
+Import both where you read a pipe:
+
+```swift
+import FP       // the sinks, like toResult()
+import FPPipe   // Pipe, the sources and the stages
 ```
 
 ## Quick start
 
 ```swift
+import FP
 import FPPipe
 
 let pipe = Pipe<Int, Never> {
@@ -152,30 +168,78 @@ let pipe = Pipe<Int, Never> {
 }
 ```
 
+### Polling
+
+fp-swift's `withRepeat(interval:)` calls a closure each time the reader asks for an element, at most once per `interval`. Like the sinks, it needs `import FP`. The first call runs at once, and each run of the pipe makes its own calls. It never ends by itself, so read it with `Take`, or with a sink that stops:
+
+```swift
+let statuses = Pipe<Status, Never> {
+    From(withRepeat(interval: .seconds(5)) { await server.status() })
+    Take(3)
+}
+```
+
+When the closure returns a `Result`, read it with `FromResult`. Here the pipe polls until a check gives a ready status: `firstSuccess()` skips the failed checks, and `Filter` removes the statuses that are not ready:
+
+```swift
+let ready = await Pipe<Status, CheckError> {
+    FromResult(withRepeat(interval: .seconds(1)) { await check() })
+    Filter { (status: Status) in status.isReady }
+}
+.firstSuccess()
+```
+
+Cancelling the reading task stops the waits, and no new call starts.
+
 ## Reading results
 
-A sink reads the pipe and returns the results.
+A sink reads the pipe and returns the results. The sinks come from fp-swift and work on any `AsyncSequence` of `Result`s, so they need `import FP`.
 
-| Sink                                  | Returns                                                      | Stops reading             |
-| ------------------------------------- | ------------------------------------------------------------ | ------------------------- |
-| `await pipe.toResult()`               | `Result<[Success], Failure>`: all values, or the first error | at the first failure      |
-| `await pipe.toArray()`                | `[Result<Success, Failure>]`: every element                  | at the end                |
-| `await pipe.reduce(initial, combine)` | `Result<U, Failure>`: all values combined into one           | at the first failure      |
-| `await pipe.first()`                  | `Result<Success, Failure>?`: the first element               | after the first element   |
-| `await pipe.firstSuccess()`           | `Success?`                                                   | at the first success      |
-| `await pipe.firstError()`             | `Failure?`                                                   | at the first failure      |
-| `for await element in pipe`           | one `Result` at a time                                       | at `break`, or at the end |
+| Sink                                       | Returns                                                                     | Stops reading             |
+| ------------------------------------------ | --------------------------------------------------------------------------- | ------------------------- |
+| `await pipe.toResult()`                    | `Result<[Success], Failure>`: all values, or the first error                | at the first failure      |
+| `await pipe.toArray()`                     | `[Result<Success, Failure>]`: every element                                 | at the end                |
+| `await pipe.separate()`                    | `(successes: [Success], failures: [Failure])`: every element, split in two  | at the end                |
+| `await pipe.reduce(initial, combine)`      | `Result<U, Failure>`: all values combined into one, or the first error      | at the first failure      |
+| `await pipe.reduce(into: initial, update)` | `Result<U, Failure>`: like `reduce`, but it changes one value in place      | at the first failure      |
+| `await pipe.first()`                       | `Result<Success, Failure>?`: the first element                              | after the first element   |
+| `await pipe.firstSuccess()`                | `Success?`                                                                  | at the first success      |
+| `await pipe.firstError()`                  | `Failure?`                                                                  | at the first failure      |
+| `await pipe.firstSuccessOrLastError()`     | `Result<Success, Failure>?`: the first success, or else the last failure    | at the first success      |
+| `await pipe.last()`                        | `Result<Success, Failure>?`: the last element                               | at the end                |
+| `await pipe.lastSuccess()`                 | `Success?`                                                                  | at the end                |
+| `await pipe.lastError()`                   | `Failure?`                                                                  | at the end                |
+| `for await element in pipe`                | one `Result` at a time                                                      | at `break`, or at the end |
 
-When a sink stops reading, the pipe stops reading the source too.
+When a sink stops reading, the pipe stops reading the source too. A sink that reads to the end never returns for a pipe that never ends.
 
 ```swift
 let counts = Pipe<Int, Never> { From(1...4) }
 
 await counts.reduce(0) { sum, n in sum + n }   // .success(10)
 await counts.firstSuccess()                    // 1
+await counts.lastSuccess()                     // 4
 ```
 
-`for await` gives you each element as a `Result`. Here `numbers` is the pipe from [How it works](#how-it-works), which can fail:
+`reduce(into:)` builds a collection without copying it for each value:
+
+```swift
+let parity = await counts.reduce(into: [Bool: [Int]]()) { by, n in
+    by[n.isMultiple(of: 2), default: []].append(n)
+}
+// .success([false: [1, 3], true: [2, 4]])
+```
+
+Here `numbers` is the pipe from [How it works](#how-it-works), which can fail. `separate()` reads past its failure, and `firstSuccessOrLastError()` stops at its first value:
+
+```swift
+await numbers.separate()
+// (successes: [2, 6], failures: [.notANumber("x")])
+
+await numbers.firstSuccessOrLastError()   // .success(2)
+```
+
+`for await` gives you each element as a `Result`:
 
 ```swift
 for await element in numbers {
@@ -221,7 +285,7 @@ await labels.toResult()  // .success(["#3", "#4"])
 
 ## Handling failures
 
-A failure enters the pipe in one of two ways: from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`.
+A failure enters the pipe from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`. `FailOnCancellation` adds one when the reading task is cancelled.
 
 | Stage                         | Closure                   | What it does                                                               |
 | ----------------------------- | ------------------------- | -------------------------------------------------------------------------- |
@@ -232,6 +296,7 @@ A failure enters the pipe in one of two ways: from a source of `Result`s, like `
 | `FlatMapError`                | `(F1) -> Result<A, F2>`   | Sees the error and returns a `Result`: a value to recover, or a failure.   |
 | `GetOrElse`                   | `(F) -> A`                | Replaces each failure with a value. After it, the pipe cannot fail.        |
 | `Match(onSuccess:onFailure:)` | `(A) -> R` and `(F) -> R` | Turns values and errors into one type `R`. After it, the pipe cannot fail. |
+| `FailOnCancellation(error)`   | none                      | Ends the pipe with one failure when the reading task is cancelled.         |
 
 ```swift
 enum FetchError: Error, Equatable {
@@ -313,7 +378,14 @@ let users = Pipe<User, LoadError> {
 }
 ```
 
-A throwing `AsyncSequence` works the same way: turn it into a sequence of `Result`s first, then read it with `FromResult`.
+A throwing `AsyncSequence` works too. fp-swift's `asResults()` turns it into a sequence of `Result`s that does not throw: each element becomes a success, and the error it throws becomes one last failure, with its type. Read it with `FromResult`, or with `DeferResult` when it can be read only once, like a stream:
+
+```swift
+let messages = Pipe<String, LoadError> {
+    DeferResult { socket.messages().asResults() }
+    MapError(LoadError.network)
+}
+```
 
 ## Pattern matching
 
@@ -462,6 +534,31 @@ Rules:
 When you `break` out of `for await`, or the reading task is cancelled, the pipe stops at once. Running closures are cancelled, and the reader does not wait for them.
 
 A closure stops early only if it checks for cancellation. `Task.sleep`, `URLSession` calls and `try Task.checkCancellation()` do. A long loop with no `await` runs to its end, so check `Task.isCancelled` inside it.
+
+A cancelled pipe stops reading its source and ends. A sink that reads to the end, like `toResult()`, then returns the values it got so far as a success, which looks complete. To get a failure instead, end the pipe with `FailOnCancellation`:
+
+```swift
+struct Cancelled: Error {}
+
+let downloads = Pipe<Data, Cancelled> {
+    From(urls)
+    AsyncMap(concurrency: 4) { (url: URL) in await fetchData(url) }
+    FailOnCancellation(Cancelled())
+}
+
+await downloads.toResult()
+// .failure(Cancelled()) if the task was cancelled
+```
+
+It checks for cancellation before each read and when the pipe before it ends. If the task is cancelled, it gives one failure with its error and ends. A cancel that comes just as the pipe ends gives the failure too. Its error sets the failure type, so the stages before it do not need one.
+
+fp-swift's `failOnCancellation(with:)` does the same between a pipe that can fail and its sink:
+
+```swift
+let result = await pipe
+    .failOnCancellation(with: .cancelled)
+    .toResult()
+```
 
 ## Turning one element into many
 
@@ -671,6 +768,7 @@ func fetchArticles(
 | `Filter` / `AsyncFilter`               | `(A) -> Bool`                                | Keeps the values for which the closure returns `true`.                                              |
 | `CompactMap` / `AsyncCompactMap`       | `(A) -> B?`                                  | Changes each value, and removes `nil` results.                                                      |
 | `Take` / `Drop`                        | `Int`                                        | Keeps or skips the first `n` elements.                                                              |
+| `FailOnCancellation`                   | `F`                                          | Ends the pipe with one failure when the reading task is cancelled.                                  |
 | `FlatMapSequence`                      | `(A) -> some Sequence<B>`                    | Turns each value into many values. Takes `bufferSize:`.                                             |
 | `FlatMapAsyncSequence`                 | `(A) -> some AsyncSequence<B>`               | Turns each value into many values, from an async sequence that does not throw. Takes `bufferSize:`. |
 | `Tap` / `AsyncTap`                     | `(A) -> Void`                                | Runs a side effect for each value.                                                                  |
@@ -697,14 +795,14 @@ Each stage protocol says which types a stage fixes and which it leaves open ("an
 | --------------------- | ---------- | ----------------- | --------------------------------------------------------------------- |
 | `PipeStage`           | fixed      | fixed             | `FlatMap`, `AsyncFlatMap`, `Match(pattern)`                           |
 | `PipePolyStage`       | fixed      | any               | `Map`, `Tap`, `Filter`, `TapMatch`                                    |
-| `PipePolyValueStage`  | any        | fixed             | `MapError`, `TapError`, `TapMatchError`                               |
+| `PipePolyValueStage`  | any        | fixed             | `MapError`, `TapError`, `TapMatchError`, `FailOnCancellation`         |
 | `PipeForwardingStage` | any        | any               | `Take`, `Drop`, `TapMatch(T.self)`, `TapMatchError(E.self)`           |
 | `PipeFlatErrorStage`  | fixed      | fixed, can change | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `GetOrElse`, `MatchError` |
 | `PipeFoldStage`       | `A` to `R` | `F` to `Never`    | `Match(onSuccess:onFailure:)`, `AsyncMatch(onSuccess:onFailure:)`     |
 
 The result builder has a `buildPartialBlock` overload for each protocol. One more overload widens a `Never` failure type, so a source that cannot fail works with stages that can.
 
-Sources, stages and sinks are `@inlinable` and use concrete types, so the compiler specializes the whole pipe. There is no allocation for each element, and each element costs one call for each stage. With `concurrency: 1` and `bufferSize: 1`, stages run in the reader's task, with no child tasks or buffers.
+Sources and stages, and fp-swift's sinks, are `@inlinable` and use concrete types, so the compiler specializes the whole pipe. There is no allocation for each element, and each element costs one call for each stage. With `concurrency: 1` and `bufferSize: 1`, stages run in the reader's task, with no child tasks or buffers.
 
 The benchmarks measure allocations, reference counting and time for every source, stage and sink. They are in their own package, in [`Benchmarks/`](Benchmarks/README.md):
 

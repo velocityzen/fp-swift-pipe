@@ -9,6 +9,7 @@ FPPipe builds async data pipelines in Swift. A pipe reads elements from a source
 <!-- Quick start: made from Readme.md by Scripts/make-docc-articles.swift. -->
 
 ```swift
+import FP
 import FPPipe
 
 let pipe = Pipe<Int, Never> {
@@ -73,15 +74,6 @@ The articles below start with the basics and end with advanced topics. Start wit
 - ``FromAsync(_:)-faxo``
 - ``FromAsyncResult(_:)``
 
-### Reading Results
-
-- ``Pipe/toResult()``
-- ``Pipe/toArray()``
-- ``Pipe/reduce(_:_:)``
-- ``Pipe/first()``
-- ``Pipe/firstSuccess()``
-- ``Pipe/firstError()``
-
 ### Changing Values
 
 - ``Map(_:)``
@@ -110,6 +102,7 @@ The articles below start with the basics and end with advanced topics. Start wit
 - ``AsyncGetOrElse(concurrency:ordered:bufferLimit:_:)``
 - ``Match(onSuccess:onFailure:)``
 - ``AsyncMatch(concurrency:ordered:bufferLimit:onSuccess:onFailure:)``
+- ``FailOnCancellation(_:)``
 
 ### Pattern Matching
 

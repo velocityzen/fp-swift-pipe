@@ -1,6 +1,7 @@
 // Hegel runs on macOS and Linux only; see Package.swift.
 #if os(macOS) || os(Linux)
 
+import FP
 import FPPipe
 import HegelTesting
 import Testing
@@ -28,6 +29,8 @@ enum Reach {
     static let waitedPastConcurrency = "more results waited behind a slow element than concurrency"
     static let bufferGrew = "a stage's buffer grew past the room it made"
     static let grewPastPreallocation = "a stage's buffer grew past the preallocation limit"
+    static let failedMidway = "FailOnCancellation failed a pipe with elements left"
+    static let failedAtTheEnd = "FailOnCancellation failed a pipe after its last element"
 }
 
 @Suite("Pipe properties", .hegel)
@@ -319,9 +322,17 @@ func expectSomeOrder(_ real: SinkOutput, of all: [Element], sink: Sink, prefixLe
         case .array(let got):
             #expect(got.count == min(prefixLength, all.count), "the prefix has the wrong length")
             #expect(isSubmultiset(got, of: all), "\(got) has elements the pipe would not give")
-        case .first(let got): expectOneOf(got, all)
-        case .firstSuccess(let got): expectOneOf(got, values)
-        case .firstError(let got): expectOneOf(got, failures)
+        case .separated(let gotValues, let gotFailures):
+            #expect(counts(gotValues) == counts(values), "separate gave \(gotValues)")
+            #expect(counts(gotFailures) == counts(failures), "separate gave \(gotFailures)")
+        case .first(let got), .last(let got): expectOneOf(got, all)
+        case .firstSuccess(let got), .lastSuccess(let got): expectOneOf(got, values)
+        case .firstError(let got), .lastError(let got): expectOneOf(got, failures)
+        case .firstSuccessOrLastError(let got):
+            // A success when there is one; otherwise a failure, or nil.
+            let candidates =
+                values.isEmpty ? failures.map(Element.failure) : values.map(Element.success)
+            expectOneOf(got, candidates)
         case .result(.success(let got)):
             #expect(failures.isEmpty, "toResult succeeded, but the pipe gives \(failures)")
             #expect(counts(got) == counts(values), "toResult gave \(got), not \(values)")

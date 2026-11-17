@@ -81,3 +81,59 @@ func readmeRunningWorkInParallel() async {
     }
     #expect(await limited.toResult() == ordered.toResult())
 }
+
+// MARK: - Cancellation
+
+private struct Cancelled: Error, Equatable {}
+
+private enum SyncError: Error, Equatable {
+    case cancelled
+}
+
+/// Runs `read` in a task that is cancelled before it starts reading.
+private func inCancelledTask<T: Sendable>(
+    _ read: @escaping @Sendable () async -> T
+) async -> T {
+    await Task {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return await read()
+    }
+    .value
+}
+
+@Test
+func readmeFailOnCancellation() async {
+    let downloads = Pipe<Data, Cancelled> {
+        From(urls)
+        AsyncMap(concurrency: 4) { (url: URL) in await fetchData(url) }
+        FailOnCancellation(Cancelled())
+    }
+
+    #expect(await inCancelledTask { await downloads.toResult() } == .failure(Cancelled()))
+    #expect(await downloads.toArray().count == urls.count)
+
+    // Without it, a cancelled pipe gives a partial success.
+    let plain = Pipe<Data, Never> {
+        From(urls)
+        AsyncMap(concurrency: 4) { (url: URL) in await fetchData(url) }
+    }
+    #expect(await inCancelledTask { await plain.toResult() } == .success([]))
+}
+
+@Test
+func readmeFailOnCancellationSink() async {
+    let pipe = Pipe<Int, SyncError> {
+        From(1...3)
+        FlatMap { (n: Int) -> Result<Int, SyncError> in .success(n * 2) }
+    }
+
+    let result = await inCancelledTask {
+        await pipe
+            .failOnCancellation(with: .cancelled)
+            .toResult()
+    }
+    #expect(result == .failure(.cancelled))
+    #expect(
+        await pipe.failOnCancellation(with: .cancelled).toResult() == .success([2, 4, 6])
+    )
+}

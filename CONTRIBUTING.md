@@ -26,16 +26,16 @@ swiftlint --strict
 | `Sources/FPPipe/Builder/` | the `@resultBuilder` that folds a source and stages into a `Pipe` |
 | `Sources/FPPipe/Sources/` | `From`, `Defer`, `FromAsync`, `Success`, `Failure`, `Empty` |
 | `Sources/FPPipe/Stages/` | one file per stage |
-| `Sources/FPPipe/Sinks/` | `toResult`, `toArray`, `reduce`, `first…` |
 | `Sources/FPPipe/Concurrency/` | how the pipe uses fp-swift's ordered and unordered `compactMap`: `compactMapAsyncIterator` and the passthroughs of the `Async*` stages at `concurrency > 1`, and the read-ahead of the fan-out stages at `bufferSize > 1` |
 
 ## Design rules
 
+- **Sinks come from fp-swift.** `toResult`, `separate`, `reduce`, `first…` and the others are fp-swift's sinks on any `AsyncSequence` of `Result`s. FPPipe does not re-export fp-swift, so code that reads a pipe imports `FP`. The test targets turn on `MemberImportVisibility` to check that they do, as users must.
 - **Result-only.** Errors travel in the `Result.failure` channel; `throws` never crosses a stage boundary. No `TryMap`-style adapters. Throwing code is turned into a `Result` where it is called (see the Readme section "Calling throwing code").
 - **Sequential by default.** Any knob that lets work run ahead of the consumer (`concurrency:`, `bufferSize:`) defaults to 1; parallelism and prefetch are explicit opt-ins at the call site.
 - **Strict concurrency clean.** Everything public is `Sendable`, stage closures are `@Sendable`, and the package must build warning-free in Swift 6 language mode on all supported platforms (macOS, iOS, tvOS, watchOS, visionOS, and Linux).
 - **Lazy and re-iterable.** Pipes store `@Sendable` builders and reconstruct the chain per iteration; a stage must not hold shared mutable state or assume it is iterated once.
-- **As cheap as a hand-written loop.** Sources, stages and sinks are `@inlinable` over `@usableFromInline` internals, so pipelines specialize in the module that declares them. A stage builds its own iterator from concrete types instead of wrapping the standard library's `map` / `compactMap` / `prefix` / `dropFirst`, which are opaque across modules and cost an allocation and an unspecialized call per element. Check a change with the [benchmarks](Benchmarks/README.md): allocation and ARC counts must not regress.
+- **As cheap as a hand-written loop.** Sources and stages are `@inlinable` over `@usableFromInline` internals, so pipelines specialize in the module that declares them. A stage builds its own iterator from concrete types instead of wrapping the standard library's `map` / `compactMap` / `prefix` / `dropFirst`, which are opaque across modules and cost an allocation and an unspecialized call per element. Check a change with the [benchmarks](Benchmarks/README.md): allocation and ARC counts must not regress.
 - **Formatting is owned by `swift-format`** (`.swift-format`); SwiftLint covers bug-catching rules (`.swiftlint.yml`). Don't hand-fight either. CI runs both in strict mode.
 
 ## Adding a stage

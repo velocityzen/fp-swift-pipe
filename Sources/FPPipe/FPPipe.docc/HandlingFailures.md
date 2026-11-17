@@ -2,7 +2,7 @@
 
 Turn values into failures, change errors, and recover from them.
 
-A failure enters the pipe in one of two ways: from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`.
+A failure enters the pipe from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`. `FailOnCancellation` adds one when the reading task is cancelled.
 
 | Stage                         | Closure                   | What it does                                                               |
 | ----------------------------- | ------------------------- | -------------------------------------------------------------------------- |
@@ -13,6 +13,7 @@ A failure enters the pipe in one of two ways: from a source of `Result`s, like `
 | `FlatMapError`                | `(F1) -> Result<A, F2>`   | Sees the error and returns a `Result`: a value to recover, or a failure.   |
 | `GetOrElse`                   | `(F) -> A`                | Replaces each failure with a value. After it, the pipe cannot fail.        |
 | `Match(onSuccess:onFailure:)` | `(A) -> R` and `(F) -> R` | Turns values and errors into one type `R`. After it, the pipe cannot fail. |
+| `FailOnCancellation(error)`   | none                      | Ends the pipe with one failure when the reading task is cancelled.         |
 
 ```swift
 enum FetchError: Error, Equatable {
@@ -94,6 +95,13 @@ let users = Pipe<User, LoadError> {
 }
 ```
 
-A throwing `AsyncSequence` works the same way: turn it into a sequence of `Result`s first, then read it with `FromResult`.
+A throwing `AsyncSequence` works too. fp-swift's `asResults()` turns it into a sequence of `Result`s that does not throw: each element becomes a success, and the error it throws becomes one last failure, with its type. Read it with `FromResult`, or with `DeferResult` when it can be read only once, like a stream:
+
+```swift
+let messages = Pipe<String, LoadError> {
+    DeferResult { socket.messages().asResults() }
+    MapError(LoadError.network)
+}
+```
 
 <!-- Made from Readme.md by Scripts/make-docc-articles.swift. Edit Readme.md, then run the script. -->

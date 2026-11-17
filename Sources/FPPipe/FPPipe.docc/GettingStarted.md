@@ -9,7 +9,7 @@ Requirements:
 - Swift 6.3 or later, in Swift 6 language mode
 - macOS, iOS, tvOS, watchOS or visionOS 26 or later, or Linux
 
-Add the package to `Package.swift`:
+FPPipe builds pipes. The sinks that read them, like `toResult()`, come from fp-swift. Add both packages to `Package.swift`:
 
 ```swift
 dependencies: [
@@ -17,21 +17,36 @@ dependencies: [
         url: "https://github.com/velocityzen/fp-swift-pipe",
         from: "2.1.0"
     ),
+    .package(
+        url: "https://github.com/velocityzen/fp-swift",
+        from: "4.6.0"
+    ),
 ],
 ```
 
-Then add the `FPPipe` product to your target:
+Then add the `FPPipe` and `FP` products to your target:
 
 ```swift
 .target(
     name: "MyApp",
-    dependencies: [.product(name: "FPPipe", package: "fp-swift-pipe")]
+    dependencies: [
+        .product(name: "FPPipe", package: "fp-swift-pipe"),
+        .product(name: "FP", package: "fp-swift"),
+    ]
 ),
+```
+
+Import both where you read a pipe:
+
+```swift
+import FP       // the sinks, like toResult()
+import FPPipe   // Pipe, the sources and the stages
 ```
 
 ## Quick start
 
 ```swift
+import FP
 import FPPipe
 
 let pipe = Pipe<Int, Never> {

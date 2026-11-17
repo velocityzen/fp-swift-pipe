@@ -65,4 +65,29 @@ When you `break` out of `for await`, or the reading task is cancelled, the pipe 
 
 A closure stops early only if it checks for cancellation. `Task.sleep`, `URLSession` calls and `try Task.checkCancellation()` do. A long loop with no `await` runs to its end, so check `Task.isCancelled` inside it.
 
+A cancelled pipe stops reading its source and ends. A sink that reads to the end, like `toResult()`, then returns the values it got so far as a success, which looks complete. To get a failure instead, end the pipe with `FailOnCancellation`:
+
+```swift
+struct Cancelled: Error {}
+
+let downloads = Pipe<Data, Cancelled> {
+    From(urls)
+    AsyncMap(concurrency: 4) { (url: URL) in await fetchData(url) }
+    FailOnCancellation(Cancelled())
+}
+
+await downloads.toResult()
+// .failure(Cancelled()) if the task was cancelled
+```
+
+It checks for cancellation before each read and when the pipe before it ends. If the task is cancelled, it gives one failure with its error and ends. A cancel that comes just as the pipe ends gives the failure too. Its error sets the failure type, so the stages before it do not need one.
+
+fp-swift's `failOnCancellation(with:)` does the same between a pipe that can fail and its sink:
+
+```swift
+let result = await pipe
+    .failOnCancellation(with: .cancelled)
+    .toResult()
+```
+
 <!-- Made from Readme.md by Scripts/make-docc-articles.swift. Edit Readme.md, then run the script. -->

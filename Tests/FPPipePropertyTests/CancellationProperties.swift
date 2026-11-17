@@ -76,6 +76,85 @@ extension PipeProperties {
         }
     }
 
+    /// `FailOnCancellation` at the end of any pipe ends a cancelled pipe
+    /// with one failure: the reader gets part of what the pipe gives, then
+    /// the failure, then nothing. With no cancel, or a cancel after the
+    /// pipe ended, it gives everything and no failure.
+    ///
+    /// The cancel lands on a drawn checkpoint, as in
+    /// `cancellingTheReaderStopsThePipe`: the reader getting its last
+    /// element is one, so a cancel that comes just as the pipe ends is too.
+    @Test
+    func failOnCancellationEndsACancelledPipe() async throws {
+        try await property(
+            examples: Self.cancelledBeforeReading,
+            reaching: [Reach.failedMidway, Reach.failedAtTheEnd]
+        ) { tc in
+            let policy = try tc.draw(PipeGen.policy, named: "policy")
+            let spec = try tc.draw(PipeGen.spec(policy), named: "pipe")
+            let all = drained(spec.input, spec.stages)
+            let checkpoints = everyEffect(spec.input, spec.stages).count + all.count
+            let run = try await tc.withRandomCancellation(
+                checkpoints: 0...checkpoints,
+                endsWithin: stallLimit,
+                stallsAfter: stallLimit
+            ) { cancellation in
+                let log = Log(
+                    onEntry: { cancellation.checkpoint($0) },
+                    onProgress: { cancellation.beat() }
+                )
+                let upstream = spec.pipe(log: log)
+                // Its own error type, so the cancel's failure can't be one
+                // the pipe gives.
+                let pipe = Pipe<Int, Outcome> {
+                    FromResult(upstream)
+                    MapError { (fail: Fail) in Outcome.pipe(fail) }
+                    FailOnCancellation(Outcome.cancelled)
+                }
+                var got: [Result<Int, Outcome>] = []
+                for await element in pipe {
+                    got.append(element)
+                    cancellation.checkpoint("reader got \(got.count)")
+                }
+                return got
+            }
+            let got = run.value
+            let failed = got.last == .failure(.cancelled)
+            let elements = (failed ? got.dropLast() : got[...]).map { element in
+                element.mapError { outcome -> Fail in
+                    guard case .pipe(let fail) = outcome else { return Fail(code: .min) }
+                    return fail
+                }
+            }
+            #expect(
+                !got.dropLast().contains(.failure(.cancelled)),
+                "the cancel's failure came before the end: \(got)"
+            )
+            if run.cancelledAt == nil {
+                #expect(!failed, "the pipe failed with no cancel")
+            }
+
+            let unordered = spec.stages.contains(where: \.isUnordered)
+            if unordered {
+                #expect(isSubmultiset(elements, of: all))
+            } else {
+                #expect(elements == Array(all.prefix(elements.count)))
+            }
+            // Without the failure, the reader got everything.
+            if !failed {
+                if unordered {
+                    #expect(counts(elements) == counts(all), "the pipe stopped early")
+                } else {
+                    #expect(elements == all, "the pipe stopped early")
+                }
+            }
+
+            if failed {
+                try tc.event(elements.count < all.count ? Reach.failedMidway : Reach.failedAtTheEnd)
+            }
+        }
+    }
+
     /// The bug fixed in 3ad345c: a source read on after the reading task was
     /// cancelled. One element, from each kind of source, and a cancel before
     /// the reader reads it.
@@ -387,6 +466,14 @@ func until(within limit: Duration, _ condition: () -> Bool) async -> Bool {
         try? await Task.sleep(for: .milliseconds(1))
     }
     return true
+}
+
+/// What a pipe ending in `FailOnCancellation` fails with.
+enum Outcome: Error, Hashable {
+    /// A failure of the pipe before it.
+    case pipe(Fail)
+    /// The stage's own failure, after a cancel.
+    case cancelled
 }
 
 #endif

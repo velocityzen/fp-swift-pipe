@@ -215,6 +215,29 @@ let benchmarks: @Sendable () -> Void = {
             }
         }
 
+        let failOnCancellation = Pipe<Int, BenchError> {
+            FromResult(results)
+            FailOnCancellation(BenchError())
+        }
+        Benchmark("FailOnCancellation", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(failOnCancellation))
+            }
+        }
+
+        // `FailOnCancellation` by hand: its checks around a read of `fromResult`.
+        Benchmark("FailOnCancellation (baseline)", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                var count = 0
+                var iterator = fromResult.makeAsyncIterator()
+                while !Task.isCancelled, await iterator.next() != nil {
+                    count += 1
+                }
+                if Task.isCancelled { count += 1 }
+                blackHole(count)
+            }
+        }
+
         // MARK: Pattern-matching stages
 
         let matchPattern = Pipe<Int, BenchError> {

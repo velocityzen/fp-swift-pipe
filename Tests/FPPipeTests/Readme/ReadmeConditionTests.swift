@@ -1,6 +1,7 @@
 // Examples from "Conditions inside a pipe" in Readme.md and the DocC articles. Keep all
 // three copies the same.
 
+import FP
 import FPPipe
 import Testing
 

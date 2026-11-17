@@ -105,6 +105,27 @@ public enum PipeBuilder {
         stage.attach(accumulated)
     }
 
+    /// Lets an error stage that keeps its failure type, like `FailOnCancellation` or
+    /// `TapError`, come after steps that cannot fail. The stage sets the failure type.
+    @inlinable
+    public static func buildPartialBlock<V: Sendable, St: PipePolyValueStage>(
+        accumulated: Pipe<V, Never>,
+        next stage: St,
+    ) -> Pipe<V, St.OutputFailure> where St.InputFailure == St.OutputFailure {
+        stage.attach(accumulated.widenFailure(to: St.InputFailure.self))
+    }
+
+    /// Adds an error stage from `Never` to `Never` after steps that cannot fail. Without it,
+    /// the `MapError` and `FailOnCancellation` overloads above both match, and the call is
+    /// ambiguous.
+    @inlinable
+    public static func buildPartialBlock<V: Sendable, St: PipePolyValueStage>(
+        accumulated: Pipe<V, Never>,
+        next stage: St,
+    ) -> Pipe<V, Never> where St.InputFailure == Never, St.OutputFailure == Never {
+        stage.attach(accumulated)
+    }
+
     /// Adds a stage that cannot fail after steps that cannot fail. Without it, the call is
     /// ambiguous.
     @inlinable
@@ -209,6 +230,26 @@ extension PipeBuilder {
         accumulated: OpenPipe<I, V, Never>,
         next stage: St,
     ) -> OpenPipe<I, V, St.OutputFailure> where St.InputFailure == Never {
+        OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
+    }
+
+    /// The open-pipe form of the `FailOnCancellation` widening overload.
+    @inlinable
+    public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
+        accumulated: OpenPipe<I, V, Never>,
+        next stage: St,
+    ) -> OpenPipe<I, V, St.OutputFailure> where St.InputFailure == St.OutputFailure {
+        OpenPipe(apply: {
+            stage.attach(accumulated.apply($0).widenFailure(to: St.InputFailure.self))
+        })
+    }
+
+    /// The open-pipe form of the error-stage `Never` to `Never` overload.
+    @inlinable
+    public static func buildPartialBlock<I: Sendable, V: Sendable, St: PipePolyValueStage>(
+        accumulated: OpenPipe<I, V, Never>,
+        next stage: St,
+    ) -> OpenPipe<I, V, Never> where St.InputFailure == Never, St.OutputFailure == Never {
         OpenPipe(apply: { stage.attach(accumulated.apply($0)) })
     }
 

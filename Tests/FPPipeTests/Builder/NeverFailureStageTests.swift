@@ -1,3 +1,4 @@
+import FP
 @testable import FPPipe
 import Testing
 
@@ -115,4 +116,46 @@ func neverFailingStageComposesInOpenPipeBranches() async {
 
     #expect(await make(true)([1, 2]).toResult() == .success([-1, -2]))
     #expect(await make(false)([1, 2]).toResult() == .success([1, 2]))
+}
+
+// An error stage that keeps its failure type, like `TapError` or `FailOnCancellation`, sets
+// the failure type after steps that cannot fail.
+
+@Test
+func errorStageThatKeepsItsFailureWidensANeverPipe() async {
+    let pipe = Pipe<Int, TestError> {
+        From([1, 2])
+        TapError { (_: TestError) in }
+        FlatMap { (n: Int) -> Result<Int, TestError> in n == 2 ? .failure(.bad) : .success(n) }
+    }
+
+    #expect(await pipe.toArray() == [.success(1), .failure(.bad)])
+}
+
+@Test
+func errorStageFromNeverToNeverComposesAfterNeverSource() async {
+    // `MapError` from `Never` and the widening overload both match this one.
+    let pipe = Pipe<Int, Never> {
+        From([1, 2])
+        TapError { (_: Never) in }
+        Map { (n: Int) in n * 2 }
+    }
+
+    #expect(await pipe.toResult() == .success([2, 4]))
+}
+
+@Test
+func errorStageThatKeepsItsFailureWidensAnOpenPipe() async {
+    let tapped = OpenPipe {
+        From(Int.self)
+        TapError { (_: TestError) in }
+    }
+    let never = OpenPipe {
+        From(Int.self)
+        TapError { (_: Never) in }
+    }
+
+    let widened: Pipe<Int, TestError> = tapped([1, 2])
+    #expect(await widened.toResult() == .success([1, 2]))
+    #expect(await never([1, 2]).toResult() == .success([1, 2]))
 }

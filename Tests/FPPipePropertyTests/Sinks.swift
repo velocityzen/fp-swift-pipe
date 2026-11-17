@@ -1,12 +1,14 @@
 // Hegel runs on macOS and Linux only; see Package.swift.
 #if os(macOS) || os(Linux)
 
+import FP
 import FPPipe
 import Testing
 
-/// How the test reads the pipe.
+/// How the test reads the pipe: with one of fp-swift's sinks, or by hand.
 enum Sink: Sendable, Hashable, CaseIterable {
-    case toArray, toResult, first, firstSuccess, firstError, reduce, prefix
+    case toArray, toResult, separate, first, firstSuccess, firstError, firstSuccessOrLastError
+    case last, lastSuccess, lastError, reduce, reduceInto, prefix
 }
 
 /// How fast the reader takes elements, and from where.
@@ -34,9 +36,14 @@ actor Drain {
 enum SinkOutput: Hashable, Sendable {
     case array([Element])
     case result(Result<[Int], Fail>)
+    case separated(successes: [Int], failures: [Fail])
     case first(Element?)
     case firstSuccess(Int?)
     case firstError(Fail?)
+    case firstSuccessOrLastError(Element?)
+    case last(Element?)
+    case lastSuccess(Int?)
+    case lastError(Fail?)
     case reduce(Result<Int, Fail>)
 
     var elements: [Element]? {
@@ -53,11 +60,12 @@ extension Sink {
     ) async -> SinkOutput {
         switch self {
             case .toArray: return .array(await Self.readAll(pipe, consumer))
+            case .first, .firstSuccess, .firstError, .firstSuccessOrLastError:
+                return await runFirst(pipe)
+            case .last, .lastSuccess, .lastError, .separate: return await runToTheEnd(pipe)
             case .toResult: return .result(await pipe.toResult())
-            case .first: return .first(await pipe.first())
-            case .firstSuccess: return .firstSuccess(await pipe.firstSuccess())
-            case .firstError: return .firstError(await pipe.firstError())
             case .reduce: return .reduce(await pipe.reduce(0) { $0 &* 31 &+ $1 })
+            case .reduceInto: return .reduce(await pipe.reduce(into: 0) { $0 = $0 &* 31 &+ $1 })
             case .prefix:
                 var elements: [Element] = []
                 for await element in pipe {
@@ -65,6 +73,28 @@ extension Sink {
                     elements.append(element)
                 }
                 return .array(elements)
+        }
+    }
+
+    /// The sinks that stop at an element they look for.
+    private func runFirst(_ pipe: Pipe<Int, Fail>) async -> SinkOutput {
+        switch self {
+            case .first: .first(await pipe.first())
+            case .firstSuccess: .firstSuccess(await pipe.firstSuccess())
+            case .firstError: .firstError(await pipe.firstError())
+            default: .firstSuccessOrLastError(await pipe.firstSuccessOrLastError())
+        }
+    }
+
+    /// The sinks that read to the end, besides `toArray`.
+    private func runToTheEnd(_ pipe: Pipe<Int, Fail>) async -> SinkOutput {
+        switch self {
+            case .last: return .last(await pipe.last())
+            case .lastSuccess: return .lastSuccess(await pipe.lastSuccess())
+            case .lastError: return .lastError(await pipe.lastError())
+            default:
+                let (successes, failures) = await pipe.separate()
+                return .separated(successes: successes, failures: failures)
         }
     }
 
@@ -92,25 +122,49 @@ extension Sink {
     /// Reads the model the same way.
     func run(_ pull: Pull, prefixLength: Int = 0) -> SinkOutput {
         switch self {
-            case .toArray:
+            case .toArray, .separate, .last, .lastSuccess, .lastError:
                 var elements: [Element] = []
                 while let element = pull() { elements.append(element) }
-                return .array(elements)
+                return output(ofAll: elements)
             case .toResult: return .result(Self.values(pull))
+            case .reduce, .reduceInto:
+                return .reduce(Self.values(pull).map { $0.reduce(0) { $0 &* 31 &+ $1 } })
             case .first: return .first(pull())
-            case .firstSuccess:
-                while let element = pull() {
-                    if case .success(let v) = element { return .firstSuccess(v) }
+            case .firstSuccess: return .firstSuccess(Self.pull(pull, until: \.success))
+            case .firstError: return .firstError(Self.pull(pull, until: \.failure))
+            case .firstSuccessOrLastError:
+                var lastFailure: Element?
+                let success = Self.pull(pull) { element -> Element? in
+                    if element.success != nil { return element }
+                    lastFailure = element
+                    return nil
                 }
-                return .firstSuccess(nil)
-            case .firstError:
-                while let element = pull() {
-                    if case .failure(let f) = element { return .firstError(f) }
-                }
-                return .firstError(nil)
-            case .reduce: return .reduce(Self.values(pull).map { $0.reduce(0) { $0 &* 31 &+ $1 } })
+                return .firstSuccessOrLastError(success ?? lastFailure)
             case .prefix: return .array(Self.prefix(pull, prefixLength))
         }
+    }
+
+    /// What a sink that reads to the end gives for all the elements.
+    private func output(ofAll elements: [Element]) -> SinkOutput {
+        switch self {
+            case .separate:
+                .separated(
+                    successes: elements.compactMap(\.success),
+                    failures: elements.compactMap(\.failure)
+                )
+            case .last: .last(elements.last)
+            case .lastSuccess: .lastSuccess(elements.compactMap(\.success).last)
+            case .lastError: .lastError(elements.compactMap(\.failure).last)
+            default: .array(elements)
+        }
+    }
+
+    /// Pulls until `found` gives a value, or to the end.
+    private static func pull<T>(_ pull: Pull, until found: (Element) -> T?) -> T? {
+        while let element = pull() {
+            if let value = found(element) { return value }
+        }
+        return nil
     }
 
     /// The values up to the first failure, which ends the read.
@@ -133,6 +187,18 @@ extension Sink {
             elements.append(element)
         }
         return elements
+    }
+}
+
+extension Result {
+    /// The value of a success, or `nil`.
+    var success: Success? {
+        if case .success(let value) = self { value } else { nil }
+    }
+
+    /// The error of a failure, or `nil`.
+    var failure: Failure? {
+        if case .failure(let error) = self { error } else { nil }
     }
 }
 
