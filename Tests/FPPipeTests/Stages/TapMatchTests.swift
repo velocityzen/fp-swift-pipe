@@ -114,8 +114,8 @@ func tapMatchComposesInIfWithoutElse() async {
         }
     }
 
-    _ = await make(false).toResult()
+    await make(false).toResult()
     #expect(count.withLock { $0 } == 0)
-    _ = await make(true).toResult()
+    await make(true).toResult()
     #expect(count.withLock { $0 } == 2)
 }

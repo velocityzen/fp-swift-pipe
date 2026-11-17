@@ -12,6 +12,7 @@ Every stage, the closure it takes, and what it does.
 | `CompactMap` / `AsyncCompactMap`       | `(A) -> B?`                                  | Changes each value, and removes `nil` results.                                                      |
 | `Take` / `Drop`                        | `Int`                                        | Keeps or skips the first `n` elements.                                                              |
 | `FailOnCancellation`                   | `F`                                          | Ends the pipe with one failure when the reading task is cancelled.                                  |
+| `UntilFailure` / `UntilSuccess`        | none                                         | Keeps the elements up to and including the first failure or success, then ends the pipe.            |
 | `FlatMapSequence`                      | `(A) -> some Sequence<B>`                    | Turns each value into many values. Takes `bufferSize:`.                                             |
 | `FlatMapAsyncSequence`                 | `(A) -> some AsyncSequence<B>`               | Turns each value into many values, from an async sequence that does not throw. Takes `bufferSize:`. |
 | `Tap` / `AsyncTap`                     | `(A) -> Void`                                | Runs a side effect for each value.                                                                  |

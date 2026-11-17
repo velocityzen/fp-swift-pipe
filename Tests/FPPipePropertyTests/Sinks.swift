@@ -5,10 +5,15 @@ import FP
 import FPPipe
 import Testing
 
-/// How the test reads the pipe: with one of fp-swift's sinks, or by hand.
+/// How the test reads the pipe: with one of fp-swift's sinks, through one of
+/// its operators, or by hand.
 enum Sink: Sendable, Hashable, CaseIterable {
     case toArray, toResult, separate, first, firstSuccess, firstError, firstSuccessOrLastError
     case last, lastSuccess, lastError, reduce, reduceInto, prefix
+    /// `for try await` over `get()`.
+    case get
+    /// `toArray()` after `untilFailure()` or `untilSuccess()`.
+    case untilFailure, untilSuccess
 }
 
 /// How fast the reader takes elements, and from where.
@@ -63,6 +68,7 @@ extension Sink {
             case .first, .firstSuccess, .firstError, .firstSuccessOrLastError:
                 return await runFirst(pipe)
             case .last, .lastSuccess, .lastError, .separate: return await runToTheEnd(pipe)
+            case .get, .untilFailure, .untilSuccess: return await runOperator(pipe)
             case .toResult: return .result(await pipe.toResult())
             case .reduce: return .reduce(await pipe.reduce(0) { $0 &* 31 &+ $1 })
             case .reduceInto: return .reduce(await pipe.reduce(into: 0) { $0 = $0 &* 31 &+ $1 })
@@ -98,6 +104,22 @@ extension Sink {
         }
     }
 
+    /// fp-swift's operators that end a sequence of results early.
+    private func runOperator(_ pipe: Pipe<Int, Fail>) async -> SinkOutput {
+        switch self {
+            case .untilFailure: return .array(await pipe.untilFailure().toArray())
+            case .untilSuccess: return .array(await pipe.untilSuccess().toArray())
+            default:
+                var values: [Int] = []
+                do throws(Fail) {
+                    for try await value in pipe.get() { values.append(value) }
+                } catch {
+                    return .result(.failure(error))
+                }
+                return .result(.success(values))
+        }
+    }
+
     /// Reads by hand, and checks that the iterator keeps returning `nil`
     /// after the end.
     private static func readAll(_ pipe: Pipe<Int, Fail>, _ consumer: Consumer) async -> [Element] {
@@ -126,7 +148,9 @@ extension Sink {
                 var elements: [Element] = []
                 while let element = pull() { elements.append(element) }
                 return output(ofAll: elements)
-            case .toResult: return .result(Self.values(pull))
+            case .toResult, .get: return .result(Self.values(pull))
+            case .untilFailure, .untilSuccess:
+                return .array(Self.until(pull, stopsOnSuccess: self == .untilSuccess))
             case .reduce, .reduceInto:
                 return .reduce(Self.values(pull).map { $0.reduce(0) { $0 &* 31 &+ $1 } })
             case .first: return .first(pull())
@@ -179,6 +203,16 @@ extension Sink {
         return .success(values)
     }
 
+    /// The elements up to and including the first failure, or success.
+    private static func until(_ pull: Pull, stopsOnSuccess: Bool) -> [Element] {
+        var elements: [Element] = []
+        while let element = pull() {
+            elements.append(element)
+            if (element.success != nil) == stopsOnSuccess { break }
+        }
+        return elements
+    }
+
     private static func prefix(_ pull: Pull, _ length: Int) -> [Element] {
         var elements: [Element] = []
         // `for await` asks for one more element before it breaks.
@@ -208,10 +242,11 @@ func drained(_ input: [Element], _ stages: [Stage], log: ModelLog = ModelLog()) 
 }
 
 /// The side effects every element could cause: the model read to the end,
-/// with every `Take` letting everything through.
+/// with every stage that can end it early, like `Take`, letting everything
+/// through.
 func everyEffect(_ input: [Element], _ stages: [Stage]) -> [String] {
     let open = stages.map { stage in
-        stage.op.isTake ? Stage(op: .take(.max), async: nil, salt: 0) : stage
+        stage.op.endsEarly ? Stage(op: .take(.max), async: nil, salt: 0) : stage
     }
     let log = ModelLog()
     _ = drained(input, open, log: log)

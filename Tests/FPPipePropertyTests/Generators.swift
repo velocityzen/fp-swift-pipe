@@ -83,6 +83,8 @@ enum PipeGen {
         .just(.tap),
         count.map { Op.take($0) },
         count.map { Op.drop($0) },
+        .just(.untilFailure),
+        .just(.untilSuccess),
         small.map { Op.mapError($0) },
         .just(.tapError),
         value.map { Op.alt($0) },
@@ -148,13 +150,13 @@ enum PipeGen {
     }
 
     /// Stages whose output does not depend on timing: an unordered stage is
-    /// never followed by `Take` or `Drop`, since which elements those keep
-    /// would depend on which finish first.
+    /// never followed by `Take`, `Drop` or an `Until` stage, since which
+    /// elements those keep would depend on which finish first.
     static func orderedBeforeCounts(_ stages: [Stage]) -> [Stage] {
         var stages = stages
         var countsLater = false
         for index in stages.indices.reversed() {
-            if stages[index].op.isCount {
+            if stages[index].op.dependsOnOrder {
                 countsLater = true
             } else if countsLater, stages[index].isUnordered {
                 stages[index].async?.ordered = true

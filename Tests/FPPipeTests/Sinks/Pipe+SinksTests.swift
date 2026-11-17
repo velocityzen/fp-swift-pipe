@@ -17,7 +17,7 @@ func toResultRunsEveryStage() async {
             return n
         }
     }
-    _ = await pipe.toResult()
+    await pipe.toResult()
     #expect(counter.withLock { $0 } == 3)
 }
 

@@ -2,7 +2,7 @@
 
 Turn values into failures, change errors, and recover from them.
 
-A failure enters the pipe from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`. `FailOnCancellation` adds one when the reading task is cancelled.
+A failure enters the pipe from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`. `FailOnCancellation` adds one when the reading task is cancelled. `UntilFailure` and `UntilSuccess` end the pipe after the first failure or success.
 
 | Stage                         | Closure                   | What it does                                                               |
 | ----------------------------- | ------------------------- | -------------------------------------------------------------------------- |
@@ -14,6 +14,8 @@ A failure enters the pipe from a source of `Result`s, like `FromResult`, or from
 | `GetOrElse`                   | `(F) -> A`                | Replaces each failure with a value. After it, the pipe cannot fail.        |
 | `Match(onSuccess:onFailure:)` | `(A) -> R` and `(F) -> R` | Turns values and errors into one type `R`. After it, the pipe cannot fail. |
 | `FailOnCancellation(error)`   | none                      | Ends the pipe with one failure when the reading task is cancelled.         |
+| `UntilFailure()`              | none                      | Keeps the elements up to and including the first failure, then ends.       |
+| `UntilSuccess()`              | none                      | Keeps the elements up to and including the first success, then ends.       |
 
 ```swift
 enum FetchError: Error, Equatable {
@@ -54,6 +56,21 @@ let lines = Pipe<String, Never> {
 ```
 
 `AsyncFlatMap`, `AsyncTapError`, `AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse` and `AsyncMatch` do the same with an `async` closure.
+
+`toResult()` stops at the first failure too, but it gives only the failure. `UntilFailure` keeps the values before the failure too, and the pipe can go on:
+
+```swift
+let firstItems = Pipe<String, FetchError> {
+    From([1, 2, 3])
+    FlatMap { (id: Int) -> Result<String, FetchError> in
+        id == 2 ? .failure(.notFound) : .success("item \(id)")
+    }
+    UntilFailure()
+}
+
+await firstItems.toArray()
+// [.success("item 1"), .failure(.notFound)]
+```
 
 To handle only some errors, use `MatchError` (see <doc:PatternMatching>).
 

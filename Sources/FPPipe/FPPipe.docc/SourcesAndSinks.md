@@ -40,7 +40,7 @@ let pipe = Pipe<Int, Never> {
 
 ### Polling
 
-fp-swift's `withRepeat(interval:)` calls a closure each time the reader asks for an element, at most once per `interval`. Like the sinks, it needs `import FP`. The first call runs at once, and each run of the pipe makes its own calls. It never ends by itself, so read it with `Take`, or with a sink that stops:
+fp-swift's `withRepeat(interval:)` calls a closure each time the reader asks for an element, at most once per `interval`. Like the sinks, it needs `import FP`. The first call runs at once, and each run of the pipe makes its own calls. It never ends by itself, so end it with a stage like `Take` or `UntilSuccess`, or read it with a sink that stops:
 
 ```swift
 let statuses = Pipe<Status, Never> {
@@ -59,29 +59,46 @@ let ready = await Pipe<Status, CheckError> {
 .firstSuccess()
 ```
 
+To see the failed checks too, end the pipe with `UntilSuccess`. It keeps each element up to and including the first success, so the poll ends at the first ready status:
+
+```swift
+let checks = Pipe<Status, CheckError> {
+    FromResult(withRepeat(interval: .seconds(1)) { await check() })
+    Filter { (status: Status) in status.isReady }
+    UntilSuccess()
+}
+
+for await check in checks {
+    print(check)  // each failed check, then the ready status
+}
+```
+
 Cancelling the reading task stops the waits, and no new call starts.
 
 ## Reading results
 
 A sink reads the pipe and returns the results. The sinks come from fp-swift and work on any `AsyncSequence` of `Result`s, so they need `import FP`.
 
-| Sink                                       | Returns                                                                     | Stops reading             |
-| ------------------------------------------ | --------------------------------------------------------------------------- | ------------------------- |
-| `await pipe.toResult()`                    | `Result<[Success], Failure>`: all values, or the first error                | at the first failure      |
-| `await pipe.toArray()`                     | `[Result<Success, Failure>]`: every element                                 | at the end                |
-| `await pipe.separate()`                    | `(successes: [Success], failures: [Failure])`: every element, split in two  | at the end                |
-| `await pipe.reduce(initial, combine)`      | `Result<U, Failure>`: all values combined into one, or the first error      | at the first failure      |
-| `await pipe.reduce(into: initial, update)` | `Result<U, Failure>`: like `reduce`, but it changes one value in place      | at the first failure      |
-| `await pipe.first()`                       | `Result<Success, Failure>?`: the first element                              | after the first element   |
-| `await pipe.firstSuccess()`                | `Success?`                                                                  | at the first success      |
-| `await pipe.firstError()`                  | `Failure?`                                                                  | at the first failure      |
-| `await pipe.firstSuccessOrLastError()`     | `Result<Success, Failure>?`: the first success, or else the last failure    | at the first success      |
-| `await pipe.last()`                        | `Result<Success, Failure>?`: the last element                               | at the end                |
-| `await pipe.lastSuccess()`                 | `Success?`                                                                  | at the end                |
-| `await pipe.lastError()`                   | `Failure?`                                                                  | at the end                |
-| `for await element in pipe`                | one `Result` at a time                                                      | at `break`, or at the end |
+| Sink                                       | Returns                                                                    | Stops reading             |
+| ------------------------------------------ | -------------------------------------------------------------------------- | ------------------------- |
+| `await pipe.toResult()`                    | `Result<[Success], Failure>`: all values, or the first error               | at the first failure      |
+| `await pipe.toArray()`                     | `[Result<Success, Failure>]`: every element                                | at the end                |
+| `await pipe.separate()`                    | `(successes: [Success], failures: [Failure])`: every element, split in two | at the end                |
+| `await pipe.reduce(initial, combine)`      | `Result<U, Failure>`: all values combined into one, or the first error     | at the first failure      |
+| `await pipe.reduce(into: initial, update)` | `Result<U, Failure>`: like `reduce`, but it changes one value in place     | at the first failure      |
+| `await pipe.first()`                       | `Result<Success, Failure>?`: the first element                             | after the first element   |
+| `await pipe.firstSuccess()`                | `Success?`                                                                 | at the first success      |
+| `await pipe.firstError()`                  | `Failure?`                                                                 | at the first failure      |
+| `await pipe.firstSuccessOrLastError()`     | `Result<Success, Failure>?`: the first success, or else the last failure   | at the first success      |
+| `await pipe.last()`                        | `Result<Success, Failure>?`: the last element                              | at the end                |
+| `await pipe.lastSuccess()`                 | `Success?`                                                                 | at the end                |
+| `await pipe.lastError()`                   | `Failure?`                                                                 | at the end                |
+| `for await element in pipe`                | one `Result` at a time                                                     | at `break`, or at the end |
+| `for try await value in pipe.get()`        | one value at a time. It throws the first failure.                          | at the first failure      |
 
 When a sink stops reading, the pipe stops reading the source too. A sink that reads to the end never returns for a pipe that never ends.
+
+`toResult()` can also run a pipe only for what its stages do, like a `Tap`, without using its result. It still stops at the first failure.
 
 ```swift
 let counts = Pipe<Int, Never> { From(1...4) }
@@ -122,5 +139,21 @@ for await element in numbers {
 // error: notANumber("x")
 // value: 6
 ```
+
+`get()` gives the values, and throws the first failure with the pipe's failure type. Reading stops there:
+
+```swift
+do throws(ParseError) {
+    for try await n in numbers.get() {
+        print("value:", n)
+    }
+} catch {
+    print("error:", error)
+}
+// value: 2
+// error: notANumber("x")
+```
+
+fp-swift's `untilFailure()` and `untilSuccess()` end a sequence after its first failure or success, before a sink, as in `await pipe.untilSuccess().last()`. The `UntilFailure` and `UntilSuccess` stages do the same inside a pipe.
 
 <!-- Made from Readme.md by Scripts/make-docc-articles.swift. Edit Readme.md, then run the script. -->

@@ -18,6 +18,7 @@ enum Reach {
     static let unorderedStoppedEarly = "the reader stopped an unordered pipe early"
     static let failureReached = "the pipe gave a failure"
     static let countCut = "Take or Drop changed an unordered output"
+    static let untilCut = "an Until stage ended an unordered output early"
     static let concurrentRerun = "a concurrent pipe gave elements twice"
     static let cancelledMidway = "the reader was cancelled with elements left"
     static let leftHanging = "a closure hung when the reader stopped"
@@ -92,7 +93,7 @@ struct PipeProperties {
             }
             if !concurrent {
                 #expect(log.all == modelLog.entries)
-            } else if sink == .toArray, !stages.contains(where: \.op.isTake) {
+            } else if sink == .toArray, !stages.contains(where: \.op.endsEarly) {
                 #expect(counts(log.all) == counts(modelLog.entries))
             } else {
                 expectPlausibleLog(log.all, spec)
@@ -107,10 +108,11 @@ struct PipeProperties {
 
     /// `Take` or `Drop` after an unordered stage keeps elements that depend
     /// on timing, but how many it keeps does not, and each is one the pipe
-    /// without it would give.
+    /// without it would give. An `Until` stage there keeps some order of
+    /// them, cut after its first failure or success.
     @Test
     func countingAfterUnorderedStages() async throws {
-        try await property(reaching: [Reach.countCut]) { tc in
+        try await property(reaching: [Reach.countCut, Reach.untilCut]) { tc in
             let policy = try tc.draw(PipeGen.policy, named: "policy")
             var spec = try tc.draw(PipeGen.spec(policy), named: "pipe")
             let unordered = try tc.draw(
@@ -122,7 +124,10 @@ struct PipeProperties {
                 named: "unordered stage"
             )
             let tail = try tc.draw(
-                Hegel.zip(.bool(), PipeGen.count).map { $0 ? Op.take($1) : Op.drop($1) },
+                .oneOf(
+                    Hegel.zip(.bool(), PipeGen.count).map { $0 ? Op.take($1) : Op.drop($1) },
+                    .element(of: [Op.untilFailure, .untilSuccess])
+                ),
                 named: "tail"
             )
             var concurrency = unordered.1
@@ -138,17 +143,25 @@ struct PipeProperties {
                 return (await counted.pipe(log: log).toArray(), log.all)
             }
             let all = drained(spec.input, Array(spec.stages.dropLast()))
-            let count: Int =
-                switch tail {
-                    case .take(let n): min(n, all.count)
-                    case .drop(let n): all.count - min(n, all.count)
-                    default: preconditionFailure()
-                }
-            #expect(real.count == count)
             #expect(isSubmultiset(real, of: all), "\(real) has elements the pipe would not give")
             expectPlausibleLog(log, spec)
 
-            if count > 0, count < all.count { try tc.event(Reach.countCut) }
+            switch tail {
+                case .untilFailure, .untilSuccess:
+                    expectUntil(real, of: all, stopsOnSuccess: tail == .untilSuccess)
+                    if real.count < all.count { try tc.event(Reach.untilCut) }
+                default:
+                    let count =
+                        if case .take(let n) = tail {
+                            min(n, all.count)
+                        } else if case .drop(let n) = tail {
+                            all.count - min(n, all.count)
+                        } else {
+                            preconditionFailure("\(tail) is not a tail")
+                        }
+                    #expect(real.count == count)
+                    if count > 0, count < all.count { try tc.event(Reach.countCut) }
+            }
         }
     }
 
@@ -317,11 +330,7 @@ func expectSomeOrder(_ real: SinkOutput, of all: [Element], sink: Sink, prefixLe
         if case .failure(let f) = element { f } else { nil }
     }
     switch real {
-        case .array(let got) where sink == .toArray:
-            #expect(counts(got) == counts(all), "\(got) is not \(all) in any order")
-        case .array(let got):
-            #expect(got.count == min(prefixLength, all.count), "the prefix has the wrong length")
-            #expect(isSubmultiset(got, of: all), "\(got) has elements the pipe would not give")
+        case .array(let got): expectSomeOrder(got, of: all, sink: sink, prefixLength: prefixLength)
         case .separated(let gotValues, let gotFailures):
             #expect(counts(gotValues) == counts(values), "separate gave \(gotValues)")
             #expect(counts(gotFailures) == counts(failures), "separate gave \(gotFailures)")
@@ -343,6 +352,48 @@ func expectSomeOrder(_ real: SinkOutput, of all: [Element], sink: Sink, prefixLe
             #expect(failures.isEmpty, "reduce succeeded, but the pipe gives \(failures)")
         case .reduce(.failure(let got)):
             #expect(failures.contains(got), "reduce failed with \(got), not in \(failures)")
+    }
+}
+
+/// Checks the elements a sink gave from an unordered pipe, in the order it
+/// gave them.
+func expectSomeOrder(_ got: [Element], of all: [Element], sink: Sink, prefixLength: Int) {
+    switch sink {
+        case .toArray: #expect(counts(got) == counts(all), "\(got) is not \(all) in any order")
+        case .untilFailure, .untilSuccess:
+            expectUntil(got, of: all, stopsOnSuccess: sink == .untilSuccess)
+        default:
+            #expect(got.count == min(prefixLength, all.count), "the prefix has the wrong length")
+            #expect(isSubmultiset(got, of: all), "\(got) has elements the pipe would not give")
+    }
+}
+
+/// Checks what `untilFailure()`, `untilSuccess()` or an `Until` stage gave
+/// from an unordered pipe: some order of `all`, cut after its first failure,
+/// or success, if it has one.
+func expectUntil(
+    _ got: [Element],
+    of all: [Element],
+    stopsOnSuccess: Bool,
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    let stops = { (element: Element) in (element.success != nil) == stopsOnSuccess }
+    #expect(
+        isSubmultiset(got, of: all),
+        "\(got) has elements the pipe would not give",
+        sourceLocation: sourceLocation
+    )
+    #expect(
+        !got.dropLast().contains(where: stops),
+        "\(got) goes on past an element it stops at",
+        sourceLocation: sourceLocation
+    )
+    if got.last.map(stops) != true {
+        #expect(
+            counts(got) == counts(all),
+            "\(got) ended before the pipe did, with nothing to stop at",
+            sourceLocation: sourceLocation
+        )
     }
 }
 

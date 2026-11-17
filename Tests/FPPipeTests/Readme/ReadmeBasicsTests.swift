@@ -188,6 +188,27 @@ func readmePollingResults() async {
 }
 
 @Test
+func readmePollingUntilSuccess() async {
+    let server = Server()
+    let check: @Sendable () async -> Result<Status, CheckError> = { await server.check() }
+
+    let checks = Pipe<Status, CheckError> {
+        FromResult(withRepeat(interval: .milliseconds(1)) { await check() })
+        Filter { (status: Status) in status.isReady }
+        UntilSuccess()
+    }
+
+    var printed: [Result<Status, CheckError>] = []
+    for await check in checks {
+        printed.append(check)
+    }
+
+    // The failed check, then the ready status. The one that was not ready is filtered out.
+    #expect(printed == [.failure(CheckError()), .success(Status(isReady: true))])
+    #expect(server.calls.withLock { $0 } == 3)
+}
+
+@Test
 func readmeReadingResults() async {
     let counts = Pipe<Int, Never> { From(1...4) }
 
@@ -214,6 +235,38 @@ func readmeReadingResults() async {
         }
     }
     #expect(printed == ["value: 2", #"error: notANumber("x")"#, "value: 6"])
+}
+
+@Test
+func readmeReadingResultsWithGet() async {
+    let numbers = parsedNumbers()
+
+    var printed: [String] = []
+    do throws(ParseError) {
+        for try await n in numbers.get() {
+            printed.append("value: \(n)")
+        }
+    } catch {
+        printed.append("error: \(error)")
+    }
+    #expect(printed == ["value: 2", #"error: notANumber("x")"#])
+
+    // The operators before a sink, as the Readme names them.
+    #expect(await numbers.untilSuccess().last() == .success(2))
+    #expect(await numbers.untilFailure().last() == .failure(.notANumber("x")))
+}
+
+@Test
+func readmeToResultCanRunAPipeForItsStages() async {
+    let seen = Mutex<[Int]>([])
+    let pipe = Pipe<Int, Never> {
+        From(1...3)
+        Tap { (n: Int) in seen.withLock { $0.append(n) } }
+    }
+
+    // No `_ =`: `toResult()` is discardable.
+    await pipe.toResult()
+    #expect(seen.withLock { $0 } == [1, 2, 3])
 }
 
 @Test
@@ -284,6 +337,20 @@ func readmeHandlingFailures() async {
     #expect(
         await lines.toResult() == .success(["ok: item 1", "ok: cached item", "ok: item 3"])
     )
+}
+
+@Test
+func readmeUntilFailure() async {
+    let firstItems = Pipe<String, FetchError> {
+        From([1, 2, 3])
+        FlatMap { (id: Int) -> Result<String, FetchError> in
+            id == 2 ? .failure(.notFound) : .success("item \(id)")
+        }
+        UntilFailure()
+    }
+
+    #expect(await firstItems.toArray() == [.success("item 1"), .failure(.notFound)])
+    #expect(await firstItems.toResult() == .failure(.notFound))
 }
 
 @Test

@@ -62,6 +62,8 @@ extension RealStage {
             case .tap: return Tap { (v: Int) in log.add("\(i) tap \(v)") }.attach(upstream)
             case .take(let n): return Take(n).attach(upstream)
             case .drop(let n): return Drop(n).attach(upstream)
+            case .untilFailure: return UntilFailure().attach(upstream)
+            case .untilSuccess: return UntilSuccess().attach(upstream)
             case .flatMapSequence(let size):
                 return FlatMapSequence(bufferSize: size) { (v: Int) in F.expand(v) }
                     .attach(upstream)

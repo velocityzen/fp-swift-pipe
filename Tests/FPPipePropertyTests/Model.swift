@@ -84,6 +84,8 @@ extension ModelStage {
                 }
             case .take(let n): return take(n)
             case .drop(let n): return drop(n)
+            case .untilFailure: return until(stopsOnSuccess: false)
+            case .untilSuccess: return until(stopsOnSuccess: true)
             case .flatMapSequence, .flatMapAsyncSequence: return expand()
             default: preconditionFailure("\(op) is not a value op")
         }
@@ -106,6 +108,17 @@ extension ModelStage {
                 guard up() != nil else { return nil }
             }
             return up()
+        }
+    }
+
+    /// `UntilFailure` and `UntilSuccess`: every element up to and including
+    /// the first failure, or success, and then nothing, with no more reads.
+    func until(stopsOnSuccess: Bool) -> Pull {
+        var stopped = false
+        return {
+            guard !stopped, let element = up() else { return nil }
+            stopped = (element.success != nil) == stopsOnSuccess
+            return element
         }
     }
 

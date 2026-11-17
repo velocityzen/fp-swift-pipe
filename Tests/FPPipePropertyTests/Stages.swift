@@ -105,6 +105,8 @@ enum Op: Sendable, Hashable {
     case tap
     case take(Int)
     case drop(Int)
+    case untilFailure
+    case untilSuccess
     case mapError(Int)
     case tapError
     case alt(Int)
@@ -126,7 +128,9 @@ enum Op: Sendable, Hashable {
     /// The op has an `Async` version.
     var hasAsync: Bool {
         switch self {
-            case .take, .drop, .mapError, .flatMapSequence, .flatMapAsyncSequence: false
+            case .take, .drop, .untilFailure, .untilSuccess, .mapError, .flatMapSequence,
+                .flatMapAsyncSequence:
+                false
             default: true
         }
     }
@@ -139,13 +143,19 @@ enum Op: Sendable, Hashable {
         }
     }
 
-    var isTake: Bool {
-        if case .take = self { true } else { false }
+    /// The op can end the pipe before the pipe before it ends, so the stages
+    /// before it may have read ahead of what it gives.
+    var endsEarly: Bool {
+        switch self {
+            case .take, .untilFailure, .untilSuccess: true
+            default: false
+        }
     }
 
-    var isCount: Bool {
+    /// Which elements the op keeps depends on the order they come in.
+    var dependsOnOrder: Bool {
         switch self {
-            case .take, .drop: true
+            case .take, .drop, .untilFailure, .untilSuccess: true
             default: false
         }
     }
@@ -180,8 +190,8 @@ enum Op: Sendable, Hashable {
 
     var family: Family {
         switch self {
-            case .map, .filter, .compactMap, .flatMap, .tap, .take, .drop, .flatMapSequence,
-                .flatMapAsyncSequence:
+            case .map, .filter, .compactMap, .flatMap, .tap, .take, .drop, .untilFailure,
+                .untilSuccess, .flatMapSequence, .flatMapAsyncSequence:
                 .value
             case .mapError, .tapError, .alt, .flatMapError, .getOrElse, .fold: .failure
             case .match, .matchValue, .matchType, .tapMatch, .tapMatchType: .match
@@ -218,6 +228,8 @@ struct Stage: Sendable, Hashable, CustomStringConvertible {
             case .tap: (name, argument) = ("Tap", "")
             case .take(let n): return "Take(\(n))"
             case .drop(let n): return "Drop(\(n))"
+            case .untilFailure: return "UntilFailure()"
+            case .untilSuccess: return "UntilSuccess()"
             case .mapError(let k): (name, argument) = ("MapError", "+\(k)")
             case .tapError: (name, argument) = ("TapError", "")
             case .alt(let x): (name, argument) = ("Alt", "\(x)")

@@ -103,6 +103,8 @@ The articles below start with the basics and end with advanced topics. Start wit
 - ``Match(onSuccess:onFailure:)``
 - ``AsyncMatch(concurrency:ordered:bufferLimit:onSuccess:onFailure:)``
 - ``FailOnCancellation(_:)``
+- ``UntilFailure()``
+- ``UntilSuccess()``
 
 ### Pattern Matching
 

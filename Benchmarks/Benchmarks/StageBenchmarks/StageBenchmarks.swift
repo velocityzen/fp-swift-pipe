@@ -238,6 +238,59 @@ let benchmarks: @Sendable () -> Void = {
             }
         }
 
+        // The `Until` stages read to the end here: nothing stops them, so each element costs
+        // what a pipe that does stop pays before it does.
+        let untilFailure = Pipe<Int, Never> {
+            From(0..<n)
+            UntilFailure()
+        }
+        Benchmark("UntilFailure", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(untilFailure))
+            }
+        }
+
+        // `UntilFailure` by hand: a read of `from` that stops after a failure.
+        Benchmark("UntilFailure (baseline)", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                var count = 0
+                var iterator = from.makeAsyncIterator()
+                while let element = await iterator.next() {
+                    count += 1
+                    if case .failure = element { break }
+                }
+                blackHole(count)
+            }
+        }
+
+        let failures = Pipe<Int, BenchError> {
+            From(0..<n)
+            FlatMap { (_: Int) in IntResult.failure(BenchError()) }
+        }
+        let untilSuccess = Pipe<Int, BenchError> {
+            From(0..<n)
+            FlatMap { (_: Int) in IntResult.failure(BenchError()) }
+            UntilSuccess()
+        }
+        Benchmark("UntilSuccess", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                blackHole(await drain(untilSuccess))
+            }
+        }
+
+        // `UntilSuccess` by hand: a read of the same failures that stops after a success.
+        Benchmark("UntilSuccess (baseline)", configuration: .pipe(tags)) { benchmark in
+            for _ in benchmark.scaledIterations {
+                var count = 0
+                var iterator = failures.makeAsyncIterator()
+                while let element = await iterator.next() {
+                    count += 1
+                    if case .success = element { break }
+                }
+                blackHole(count)
+            }
+        }
+
         // MARK: Pattern-matching stages
 
         let matchPattern = Pipe<Int, BenchError> {

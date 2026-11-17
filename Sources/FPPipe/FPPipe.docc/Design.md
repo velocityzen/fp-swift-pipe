@@ -6,14 +6,14 @@ A `Pipe<Success, Failure>` is an `AsyncSequence` of `Result<Success, Failure>`. 
 
 Each stage protocol says which types a stage fixes and which it leaves open ("any"):
 
-| Protocol              | Value type | Failure type      | Examples                                                              |
-| --------------------- | ---------- | ----------------- | --------------------------------------------------------------------- |
-| `PipeStage`           | fixed      | fixed             | `FlatMap`, `AsyncFlatMap`, `Match(pattern)`                           |
-| `PipePolyStage`       | fixed      | any               | `Map`, `Tap`, `Filter`, `TapMatch`                                    |
-| `PipePolyValueStage`  | any        | fixed             | `MapError`, `TapError`, `TapMatchError`, `FailOnCancellation`         |
-| `PipeForwardingStage` | any        | any               | `Take`, `Drop`, `TapMatch(T.self)`, `TapMatchError(E.self)`           |
-| `PipeFlatErrorStage`  | fixed      | fixed, can change | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `GetOrElse`, `MatchError` |
-| `PipeFoldStage`       | `A` to `R` | `F` to `Never`    | `Match(onSuccess:onFailure:)`, `AsyncMatch(onSuccess:onFailure:)`     |
+| Protocol              | Value type | Failure type      | Examples                                                                    |
+| --------------------- | ---------- | ----------------- | --------------------------------------------------------------------------- |
+| `PipeStage`           | fixed      | fixed             | `FlatMap`, `AsyncFlatMap`, `Match(pattern)`                                 |
+| `PipePolyStage`       | fixed      | any               | `Map`, `Tap`, `Filter`, `TapMatch`                                          |
+| `PipePolyValueStage`  | any        | fixed             | `MapError`, `TapError`, `TapMatchError`, `FailOnCancellation`               |
+| `PipeForwardingStage` | any        | any               | `Take`, `Drop`, `UntilFailure`, `TapMatch(T.self)`, `TapMatchError(E.self)` |
+| `PipeFlatErrorStage`  | fixed      | fixed, can change | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `GetOrElse`, `MatchError`       |
+| `PipeFoldStage`       | `A` to `R` | `F` to `Never`    | `Match(onSuccess:onFailure:)`, `AsyncMatch(onSuccess:onFailure:)`           |
 
 The result builder has a `buildPartialBlock` overload for each protocol. One more overload widens a `Never` failure type, so a source that cannot fail works with stages that can.
 

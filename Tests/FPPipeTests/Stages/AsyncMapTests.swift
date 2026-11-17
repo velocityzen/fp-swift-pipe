@@ -51,6 +51,6 @@ func asyncMapConcurrentParallelizesWork() async {
         }
     }
 
-    _ = await pipe.toResult()
+    await pipe.toResult()
     #expect(rendezvous.peak == count)
 }

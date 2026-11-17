@@ -121,7 +121,7 @@ struct PipeBenchmarks {
         var samples: [Duration] = []
         for _ in 0..<50 {
             let start = clock.now
-            _ = await pipe.toResult()
+            await pipe.toResult()
             samples.append(start.duration(to: clock.now))
         }
 

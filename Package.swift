@@ -16,9 +16,10 @@ let package = Package(
         )
     ],
     dependencies: [
-        // 4.6.0 adds the result sinks, `failOnCancellation(with:)` and
-        // `asResults()` that the Readme shows on pipes.
-        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.6.0"),
+        // 4.7.0 adds `get()`, `untilFailure()` and `untilSuccess()`, which the
+        // Readme shows on pipes and the `Until` stages use, and makes
+        // `toResult()` discardable.
+        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.7.0"),
         // Property-based tests. Test targets only, so FPPipe's users never
         // fetch it.
         .package(url: "https://github.com/velocityzen/hegel-swift", from: "0.51.8"),

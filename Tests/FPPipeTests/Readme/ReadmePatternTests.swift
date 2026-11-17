@@ -129,7 +129,7 @@ func readmePatternPayloadForm() async {
         }
     }
 
-    _ = await users.toResult()
+    await users.toResult()
     _ = await failures.toArray()
     #expect(log.withLock { $0 } == ["welcome, ann", "HTTP error 500"])
 }

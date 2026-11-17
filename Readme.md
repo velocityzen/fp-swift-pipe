@@ -170,7 +170,7 @@ let pipe = Pipe<Int, Never> {
 
 ### Polling
 
-fp-swift's `withRepeat(interval:)` calls a closure each time the reader asks for an element, at most once per `interval`. Like the sinks, it needs `import FP`. The first call runs at once, and each run of the pipe makes its own calls. It never ends by itself, so read it with `Take`, or with a sink that stops:
+fp-swift's `withRepeat(interval:)` calls a closure each time the reader asks for an element, at most once per `interval`. Like the sinks, it needs `import FP`. The first call runs at once, and each run of the pipe makes its own calls. It never ends by itself, so end it with a stage like `Take` or `UntilSuccess`, or read it with a sink that stops:
 
 ```swift
 let statuses = Pipe<Status, Never> {
@@ -189,29 +189,46 @@ let ready = await Pipe<Status, CheckError> {
 .firstSuccess()
 ```
 
+To see the failed checks too, end the pipe with `UntilSuccess`. It keeps each element up to and including the first success, so the poll ends at the first ready status:
+
+```swift
+let checks = Pipe<Status, CheckError> {
+    FromResult(withRepeat(interval: .seconds(1)) { await check() })
+    Filter { (status: Status) in status.isReady }
+    UntilSuccess()
+}
+
+for await check in checks {
+    print(check)  // each failed check, then the ready status
+}
+```
+
 Cancelling the reading task stops the waits, and no new call starts.
 
 ## Reading results
 
 A sink reads the pipe and returns the results. The sinks come from fp-swift and work on any `AsyncSequence` of `Result`s, so they need `import FP`.
 
-| Sink                                       | Returns                                                                     | Stops reading             |
-| ------------------------------------------ | --------------------------------------------------------------------------- | ------------------------- |
-| `await pipe.toResult()`                    | `Result<[Success], Failure>`: all values, or the first error                | at the first failure      |
-| `await pipe.toArray()`                     | `[Result<Success, Failure>]`: every element                                 | at the end                |
-| `await pipe.separate()`                    | `(successes: [Success], failures: [Failure])`: every element, split in two  | at the end                |
-| `await pipe.reduce(initial, combine)`      | `Result<U, Failure>`: all values combined into one, or the first error      | at the first failure      |
-| `await pipe.reduce(into: initial, update)` | `Result<U, Failure>`: like `reduce`, but it changes one value in place      | at the first failure      |
-| `await pipe.first()`                       | `Result<Success, Failure>?`: the first element                              | after the first element   |
-| `await pipe.firstSuccess()`                | `Success?`                                                                  | at the first success      |
-| `await pipe.firstError()`                  | `Failure?`                                                                  | at the first failure      |
-| `await pipe.firstSuccessOrLastError()`     | `Result<Success, Failure>?`: the first success, or else the last failure    | at the first success      |
-| `await pipe.last()`                        | `Result<Success, Failure>?`: the last element                               | at the end                |
-| `await pipe.lastSuccess()`                 | `Success?`                                                                  | at the end                |
-| `await pipe.lastError()`                   | `Failure?`                                                                  | at the end                |
-| `for await element in pipe`                | one `Result` at a time                                                      | at `break`, or at the end |
+| Sink                                       | Returns                                                                    | Stops reading             |
+| ------------------------------------------ | -------------------------------------------------------------------------- | ------------------------- |
+| `await pipe.toResult()`                    | `Result<[Success], Failure>`: all values, or the first error               | at the first failure      |
+| `await pipe.toArray()`                     | `[Result<Success, Failure>]`: every element                                | at the end                |
+| `await pipe.separate()`                    | `(successes: [Success], failures: [Failure])`: every element, split in two | at the end                |
+| `await pipe.reduce(initial, combine)`      | `Result<U, Failure>`: all values combined into one, or the first error     | at the first failure      |
+| `await pipe.reduce(into: initial, update)` | `Result<U, Failure>`: like `reduce`, but it changes one value in place     | at the first failure      |
+| `await pipe.first()`                       | `Result<Success, Failure>?`: the first element                             | after the first element   |
+| `await pipe.firstSuccess()`                | `Success?`                                                                 | at the first success      |
+| `await pipe.firstError()`                  | `Failure?`                                                                 | at the first failure      |
+| `await pipe.firstSuccessOrLastError()`     | `Result<Success, Failure>?`: the first success, or else the last failure   | at the first success      |
+| `await pipe.last()`                        | `Result<Success, Failure>?`: the last element                              | at the end                |
+| `await pipe.lastSuccess()`                 | `Success?`                                                                 | at the end                |
+| `await pipe.lastError()`                   | `Failure?`                                                                 | at the end                |
+| `for await element in pipe`                | one `Result` at a time                                                     | at `break`, or at the end |
+| `for try await value in pipe.get()`        | one value at a time. It throws the first failure.                          | at the first failure      |
 
 When a sink stops reading, the pipe stops reading the source too. A sink that reads to the end never returns for a pipe that never ends.
+
+`toResult()` can also run a pipe only for what its stages do, like a `Tap`, without using its result. It still stops at the first failure.
 
 ```swift
 let counts = Pipe<Int, Never> { From(1...4) }
@@ -253,6 +270,22 @@ for await element in numbers {
 // value: 6
 ```
 
+`get()` gives the values, and throws the first failure with the pipe's failure type. Reading stops there:
+
+```swift
+do throws(ParseError) {
+    for try await n in numbers.get() {
+        print("value:", n)
+    }
+} catch {
+    print("error:", error)
+}
+// value: 2
+// error: notANumber("x")
+```
+
+fp-swift's `untilFailure()` and `untilSuccess()` end a sequence after its first failure or success, before a sink, as in `await pipe.untilSuccess().last()`. The `UntilFailure` and `UntilSuccess` stages do the same inside a pipe.
+
 ## Changing values
 
 These stages work on successes. Failures pass through them unchanged.
@@ -285,7 +318,7 @@ await labels.toResult()  // .success(["#3", "#4"])
 
 ## Handling failures
 
-A failure enters the pipe from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`. `FailOnCancellation` adds one when the reading task is cancelled.
+A failure enters the pipe from a source of `Result`s, like `FromResult`, or from a stage that returns a `Result`, like `FlatMap`. `FailOnCancellation` adds one when the reading task is cancelled. `UntilFailure` and `UntilSuccess` end the pipe after the first failure or success.
 
 | Stage                         | Closure                   | What it does                                                               |
 | ----------------------------- | ------------------------- | -------------------------------------------------------------------------- |
@@ -297,6 +330,8 @@ A failure enters the pipe from a source of `Result`s, like `FromResult`, or from
 | `GetOrElse`                   | `(F) -> A`                | Replaces each failure with a value. After it, the pipe cannot fail.        |
 | `Match(onSuccess:onFailure:)` | `(A) -> R` and `(F) -> R` | Turns values and errors into one type `R`. After it, the pipe cannot fail. |
 | `FailOnCancellation(error)`   | none                      | Ends the pipe with one failure when the reading task is cancelled.         |
+| `UntilFailure()`              | none                      | Keeps the elements up to and including the first failure, then ends.       |
+| `UntilSuccess()`              | none                      | Keeps the elements up to and including the first success, then ends.       |
 
 ```swift
 enum FetchError: Error, Equatable {
@@ -337,6 +372,21 @@ let lines = Pipe<String, Never> {
 ```
 
 `AsyncFlatMap`, `AsyncTapError`, `AsyncAlt`, `AsyncFlatMapError`, `AsyncGetOrElse` and `AsyncMatch` do the same with an `async` closure.
+
+`toResult()` stops at the first failure too, but it gives only the failure. `UntilFailure` keeps the values before the failure too, and the pipe can go on:
+
+```swift
+let firstItems = Pipe<String, FetchError> {
+    From([1, 2, 3])
+    FlatMap { (id: Int) -> Result<String, FetchError> in
+        id == 2 ? .failure(.notFound) : .success("item \(id)")
+    }
+    UntilFailure()
+}
+
+await firstItems.toArray()
+// [.success("item 1"), .failure(.notFound)]
+```
 
 To handle only some errors, use [`MatchError`](#pattern-matching).
 
@@ -769,6 +819,7 @@ func fetchArticles(
 | `CompactMap` / `AsyncCompactMap`       | `(A) -> B?`                                  | Changes each value, and removes `nil` results.                                                      |
 | `Take` / `Drop`                        | `Int`                                        | Keeps or skips the first `n` elements.                                                              |
 | `FailOnCancellation`                   | `F`                                          | Ends the pipe with one failure when the reading task is cancelled.                                  |
+| `UntilFailure` / `UntilSuccess`        | none                                         | Keeps the elements up to and including the first failure or success, then ends the pipe.            |
 | `FlatMapSequence`                      | `(A) -> some Sequence<B>`                    | Turns each value into many values. Takes `bufferSize:`.                                             |
 | `FlatMapAsyncSequence`                 | `(A) -> some AsyncSequence<B>`               | Turns each value into many values, from an async sequence that does not throw. Takes `bufferSize:`. |
 | `Tap` / `AsyncTap`                     | `(A) -> Void`                                | Runs a side effect for each value.                                                                  |
@@ -791,14 +842,14 @@ A `Pipe<Success, Failure>` is an `AsyncSequence` of `Result<Success, Failure>`. 
 
 Each stage protocol says which types a stage fixes and which it leaves open ("any"):
 
-| Protocol              | Value type | Failure type      | Examples                                                              |
-| --------------------- | ---------- | ----------------- | --------------------------------------------------------------------- |
-| `PipeStage`           | fixed      | fixed             | `FlatMap`, `AsyncFlatMap`, `Match(pattern)`                           |
-| `PipePolyStage`       | fixed      | any               | `Map`, `Tap`, `Filter`, `TapMatch`                                    |
-| `PipePolyValueStage`  | any        | fixed             | `MapError`, `TapError`, `TapMatchError`, `FailOnCancellation`         |
-| `PipeForwardingStage` | any        | any               | `Take`, `Drop`, `TapMatch(T.self)`, `TapMatchError(E.self)`           |
-| `PipeFlatErrorStage`  | fixed      | fixed, can change | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `GetOrElse`, `MatchError` |
-| `PipeFoldStage`       | `A` to `R` | `F` to `Never`    | `Match(onSuccess:onFailure:)`, `AsyncMatch(onSuccess:onFailure:)`     |
+| Protocol              | Value type | Failure type      | Examples                                                                    |
+| --------------------- | ---------- | ----------------- | --------------------------------------------------------------------------- |
+| `PipeStage`           | fixed      | fixed             | `FlatMap`, `AsyncFlatMap`, `Match(pattern)`                                 |
+| `PipePolyStage`       | fixed      | any               | `Map`, `Tap`, `Filter`, `TapMatch`                                          |
+| `PipePolyValueStage`  | any        | fixed             | `MapError`, `TapError`, `TapMatchError`, `FailOnCancellation`               |
+| `PipeForwardingStage` | any        | any               | `Take`, `Drop`, `UntilFailure`, `TapMatch(T.self)`, `TapMatchError(E.self)` |
+| `PipeFlatErrorStage`  | fixed      | fixed, can change | `FlatMapError`, `AsyncFlatMapError`, `Alt`, `GetOrElse`, `MatchError`       |
+| `PipeFoldStage`       | `A` to `R` | `F` to `Never`    | `Match(onSuccess:onFailure:)`, `AsyncMatch(onSuccess:onFailure:)`           |
 
 The result builder has a `buildPartialBlock` overload for each protocol. One more overload widens a `Never` failure type, so a source that cannot fail works with stages that can.
 
