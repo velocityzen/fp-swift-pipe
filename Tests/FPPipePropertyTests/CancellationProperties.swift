@@ -171,10 +171,12 @@ extension PipeProperties {
     /// cancelled, and the reader does not wait for them to end.
     ///
     /// A concurrent `AsyncMap` whose closure hangs, on the values a drawn
-    /// modulus picks, goes anywhere in the pipe. A hang ends when its task is
-    /// cancelled. A stubborn one, like a loop that never checks for
-    /// cancellation, ends only after the test case has checked the reader
-    /// ended, so a reader that waited for it would never end.
+    /// modulus picks, goes anywhere in the pipe. Before `Take`, `Drop` or an
+    /// `Until` stage it runs ordered, as every drawn stage there does. A hang
+    /// ends when its task is cancelled. A stubborn one, like a loop that
+    /// never checks for cancellation, ends only after the test case has
+    /// checked the reader ended, so a reader that waited for it would never
+    /// end.
     ///
     /// The reader takes at most the elements it surely gets without waiting
     /// on a hang, then stops; a drawn cancel may stop it sooner. Meanwhile
@@ -184,6 +186,7 @@ extension PipeProperties {
     @Test
     func stoppingTheReaderCancelsItsWork() async throws {
         try await property(
+            examples: Self.unorderedBeforeUntil,
             reaching: [
                 Reach.leftHanging, Reach.cancelledWhileHanging, Reach.stoppedWhileHanging,
                 Reach.hungBehindStages, Reach.endedBeforeItsWork,
@@ -240,6 +243,29 @@ extension PipeProperties {
             if leftRunning > 0 { try tc.event(Reach.endedBeforeItsWork) }
         }
     }
+
+    /// The case the nightly run found once `UntilFailure` was a drawn stage:
+    /// an unordered hanging stage before it. The failure runs no closure, so
+    /// it can come out before the 1, and `UntilFailure` then ends the pipe
+    /// after one element, where the model, in source order, counts two. The
+    /// reader got 1 of the 2 it surely gets. The stages were right and the
+    /// count was wrong: `HangingPipe.draw` now runs the hanging stage ordered
+    /// there.
+    static let unorderedBeforeUntil: [Example] = [
+        [
+            "policy": PipePolicy(failureRate: 0.5, ops: [7, 1, 11], asyncRate: 0.0, tight: true),
+            "pipe": PipeSpec(
+                input: [.success(1), .failure(Fail(code: 0))],
+                stages: [Stage(op: .untilFailure, async: nil, salt: 0)]
+            ),
+            "hanging stage": (2, Concurrency(concurrency: .max, ordered: false, bufferLimit: .max)),
+            "position": 0,
+            "wanted": 2,
+            "lingers": false,
+            "stubborn": false,
+            "cancelAfter": Int?.none,
+        ]
+    ]
 }
 
 /// A pipe with a concurrent stage whose closure hangs on some values, and
@@ -264,11 +290,21 @@ struct HangingPipe: Sendable {
         let policy = try tc.draw(PipeGen.policy, named: "policy")
         let spec = try tc.draw(PipeGen.spec(policy), named: "pipe")
         // 1 hangs on every value, 2 on half; any modulus sometimes.
-        let (m, stage) = try tc.draw(
+        let (m, drawn) = try tc.draw(
             Hegel.zip(.oneOf(.int(in: 1...3), PipeGen.modulus), PipeGen.parallel),
             named: "hanging stage"
         )
         let position = try tc.draw(.int(in: 0...spec.stages.count), named: "position")
+        // The rule `PipeGen.orderedBeforeCounts` keeps for the drawn stages:
+        // nothing unordered before `Take`, `Drop` or an `Until` stage. Which
+        // elements those keep would depend on which finish first, and so
+        // would how many the stages after them give. An `UntilFailure` would
+        // end at whichever failure came out first.
+        var stage = drawn
+        if stage.isUnordered, spec.stages[position...].contains(where: \.op.dependsOnOrder) {
+            stage.ordered = true
+            tc.note("the hanging stage runs ordered: a later stage keeps elements by their order")
+        }
         let before = Array(spec.stages[..<position])
         let upstream = drained(spec.input, before)
         let passing = readyElements(
