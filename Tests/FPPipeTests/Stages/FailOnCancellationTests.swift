@@ -149,11 +149,12 @@ func failOnCancellationCanBeOptional() async {
     #expect(await inCancelledTask { await make(false).toResult() } == .success([]))
 }
 
+// Linux only. On Apple platforms `withTaskCancellationShield` is emitted into the caller and
+// links the runtime's shield entry points strongly, so before macOS 27 the whole test bundle
+// fails to load, and `#available` can't prevent that.
+#if compiler(>=6.4) && os(Linux)
 @Test
 func failOnCancellationPassesEverythingInsideAShield() async {
-    guard #available(macOS 27.0, iOS 27.0, tvOS 27.0, watchOS 27.0, visionOS 27.0, *) else {
-        return
-    }
     let pipe = Pipe<Int, SyncError> {
         From([1, 2, 3])
         FailOnCancellation(SyncError.cancelled)
@@ -164,3 +165,4 @@ func failOnCancellationPassesEverythingInsideAShield() async {
     }
     #expect(result == .success([1, 2, 3]))
 }
+#endif
