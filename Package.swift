@@ -19,7 +19,7 @@ let package = Package(
         // 4.7.0 added `get()`, `untilFailure()` and `untilSuccess()`, which the
         // Readme shows on pipes and the `Until` stages use, and made
         // `toResult()` discardable.
-        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.8.0"),
+        .package(url: "https://github.com/velocityzen/fp-swift", from: "4.9.0"),
         // Property-based tests. Test targets only, so FPPipe's users never
         // fetch it.
         .package(url: "https://github.com/velocityzen/hegel-swift", from: "0.51.8"),
